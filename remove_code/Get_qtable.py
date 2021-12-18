@@ -15,6 +15,7 @@ import sys
 import torch.nn as nn
 from my_data_mining import volcano_mine
 import matplotlib.pyplot as plt
+import pickle
 # import torch.nn.functional as F
 
 # from art.attacks.evasion import FastGradientMethod,DeepFool
@@ -108,17 +109,17 @@ if __name__=='__main__':
     # 配置解释器参数
     if len(sys.argv)!=2:
         print('Manual Mode !!!')
-        model_vanilla_type    = 'allconv'
+        thresh  = 0.3
         # data          = 'test'
         # device        = 0
     else:
         print('Terminal Mode !!!')
-        model_vanilla_type  = sys.argv[1]
+        thresh  = float(sys.argv[1])
         # data        = sys.argv[2]
         # device      = int(sys.argv[3])
-       
+    model_vanilla_type    = 'allconv' 
     attacker_name='FGSM_L2_IDP'
-    eps=0.5
+    eps=[0.1,0.5,1.0,10.0]
     device=0
     img_num=100
     saved_dir = '../saved_tests/img_attack/accuracy/'+model_vanilla_type
@@ -170,20 +171,24 @@ if __name__=='__main__':
     '''
     攻击初始化
     '''
-    attacker,_=g.select_attack(fmodel,attacker_name,eps)
+    table_dict=dict()
+    table_dict[0]=np.ones([8,8])
+    for eps_now in eps:
+        attacker,_=g.select_attack(fmodel,attacker_name,eps_now)
+        
+        clean_imgs,adv_imgs=get_shapleys_batch_adv(attacker,model,dataloader,img_num,device)
+        
+        clean_imgs=np.transpose(clean_imgs.copy(),(0,2,3,1))*255
+        adv_imgs=np.transpose(adv_imgs.copy(),(0,2,3,1))*255
+        
+        np.set_printoptions(suppress=True)
+        a_qtable,Q,clns,advs=Cal_qtable(clean_imgs, adv_imgs,thresh)
+        a_qtable=np.round(a_qtable)
+        Q=np.round(Q)
+        table_dict[eps_now]=a_qtable
+    pickle.dump(table_dict, open('table_dict.pkl','wb'))
     
-    clean_imgs,adv_imgs=get_shapleys_batch_adv(attacker,model,dataloader,img_num,device)
-    
-    clean_imgs=np.transpose(clean_imgs,(0,2,3,1))*255
-    adv_imgs=np.transpose(adv_imgs,(0,2,3,1))*255
-    
-    # clean_imgs=np.clip(clean_imgs,0,1)
-    # adv_imgs=np.clip(adv_imgs,0,1)
-    np.set_printoptions(suppress=True)
-    a_qtable,Q,clns,advs=Cal_qtable(clean_imgs, adv_imgs)
-    a_qtable=np.round(a_qtable)
-    Q=np.round(Q)
-    print(a_qtable)
+    # print(a_qtable)
     # print(' ')
     # print(Q)
     
@@ -198,17 +203,17 @@ if __name__=='__main__':
     # plt.figure()
     # plt.imshow((adv_show-cln_show)*50+0.5)
     
-    fc,pc=volcano_mine(np.abs(clns),np.abs(advs))
-    idx_green=(fc>=np.log2(1.2))&(pc>(-np.log10(0.05)))
-    idx_red=(fc<=-np.log2(1.2))&(pc>(-np.log10(0.05)))
-    mine_table=np.zeros([64])
-    mine_table[pc>(-np.log10(0.05))]=1
-    # print(' ')
-    # print(mine_table.reshape([8,8]))
+    # fc,pc=volcano_mine(np.abs(clns),np.abs(advs))
+    # idx_green=(fc>=np.log2(1.2))&(pc>(-np.log10(0.05)))
+    # idx_red=(fc<=-np.log2(1.2))&(pc>(-np.log10(0.05)))
+    # mine_table=np.zeros([64])
+    # mine_table[pc>(-np.log10(0.05))]=1
+    # # print(' ')
+    # # print(mine_table.reshape([8,8]))
     
-    a=pc.reshape([8,8])
-    a=a/a.max()*80+20
-    a=np.round(a)
+    # a=pc.reshape([8,8])
+    # a=a/a.max()*80+20
+    # a=np.round(a)
     # print(' ')
     # print(a)
     

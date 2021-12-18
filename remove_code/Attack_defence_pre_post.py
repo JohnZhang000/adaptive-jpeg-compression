@@ -23,7 +23,7 @@ from scipy.special import softmax
 
 from defense import defend_webpf_wrap,defend_webpf_my_wrap,defend_rdg_wrap,defend_fd_wrap,defend_bdr_wrap,defend_shield_wrap
 from defense import defend_my_webpf
-from defense_ago import defend_FD_ago_warp
+from defense_ago import defend_FD_ago_warp,defend_my_fd_ago
 
 from models.cifar.allconv import AllConvNet
 from third_party.ResNeXt_DenseNet.models.densenet import densenet
@@ -34,7 +34,7 @@ sys.path.append('../common_code')
 # from load_cifar_data import load_CIFAR_batch,load_CIFAR_train
 import general as g
 from load_cifar_data import load_CIFAR_batch,load_CIFAR_train,load_imagenet_batch,load_imagenet_filenames
-
+import pickle
 
 def append_attack(attacks,attack,model,epss):
     for i in range(len(epss)):
@@ -155,8 +155,8 @@ if __name__=='__main__':
     #defences_names_pre.append('ToVM')
     # defences_pre.append(defend_webpf_my_wrap)
     # defences_names_pre.append('webpf_my')
-    defences_pre.append(defend_webpf_wrap)
-    defences_names_pre.append('webpf')
+    # defences_pre.append(defend_webpf_wrap)
+    # defences_names_pre.append('webpf')
     # defences_pre.append(defend_rdg_wrap)
     # defences_names_pre.append('rdg')
     # defences_pre.append(defend_fd_wrap)
@@ -165,13 +165,13 @@ if __name__=='__main__':
     # defences_names_pre.append('bdr')
     # defences_pre.append(defend_shield_wrap)
     # defences_names_pre.append('shield')
-    defences_pre.append(defend_FD_ago_warp)
-    defences_names_pre.append('FD_ago')
+    # defences_pre.append(defend_FD_ago_warp)
+    # defences_names_pre.append('FD_ago')
     
-    # model_pkl='../saved_tests/img_attack_reg/spectrum_label/allconv/allconv_other.pkl'
-    # webpf_new=defend_my_webpf(model_pkl,32,8)
-    # defences_pre.append(webpf_new.defend)
-    # defences_names_pre.append('webpf_my_new')
+    table_pkl='table_dict.pkl'
+    fd_ago_new=defend_my_fd_ago(table_pkl)
+    defences_pre.append(fd_ago_new.defend)
+    defences_names_pre.append('fd_ago_my')
     
     # if Q<50:
     #     S=5000/Q
@@ -246,7 +246,7 @@ if __name__=='__main__':
     
     for i in range(len(defences_pre)):
         images_def=images_adv.copy()
-        if 'webpf_my'==defences_names_pre[i]:
+        if 'fd_ago_my'==defences_names_pre[i]:
             images_in,labels_in = defences_pre[i](images_def.transpose(0,2,3,1),0*np.ones(images_def.shape[0]),labels.copy())
         else:
             images_in,labels_in = defences_pre[i](images_def.transpose(0,2,3,1),labels.copy())
@@ -300,7 +300,7 @@ if __name__=='__main__':
         
         for i in range(len(defences_pre)):
             images_def=images_adv.copy()
-            if 'webpf_my'==defences_names_pre[i]:
+            if 'fd_ago_my'==defences_names_pre[i]:
                 if 'Deepfool' in attack_names[j] or 'CW' in attack_names[j]:
                     eps_pred=0.1
                 else:

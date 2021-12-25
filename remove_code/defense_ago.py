@@ -254,6 +254,59 @@ class defend_my_fd_ago:
         output3 = output3/255
         output3 = np.clip(np.float32(output3),0.0,1.0)
         return output3
+    
+    def FD_fuction_channel_wise(self,input_matrix,table_now):
+        output = []
+        input_matrix = input_matrix*255
+
+        n = input_matrix.shape[0]
+        h = input_matrix.shape[1]
+        w = input_matrix.shape[2]
+        c = input_matrix.shape[3]
+        horizontal_blocks_num = w / num
+        output2=np.zeros((c,h, w))
+        output3=np.zeros((n,3,h, w))
+        vertical_blocks_num = h / num
+        n_block = np.split(input_matrix,n,axis=0)
+        for i in range(n):
+            c_block = np.split(n_block[i],c,axis =3)
+            j=0
+            for ch_block in c_block:
+                ch_block=ch_block.squeeze()
+                vertical_blocks = np.split(ch_block, vertical_blocks_num,axis = 1)
+                k=0
+                for block_ver in vertical_blocks:
+                    block_ver=block_ver.squeeze()
+                    hor_blocks = np.split(block_ver,horizontal_blocks_num,axis = 0)
+                    m=0
+                    for block in hor_blocks:
+                        block = np.reshape(block,(num,num))
+                        block = dct2(block)
+                        # quantization
+                        table_quantized = np.matrix.round(np.divide(block, table_now[j]))
+                        table_quantized = np.squeeze(np.asarray(table_quantized))
+                        # de-quantization
+                        table_unquantized = table_quantized*table_now[j]
+                        IDCT_table = idct2(table_unquantized)
+                        if m==0:
+                            output=IDCT_table
+                        else:
+                            output = np.concatenate((output,IDCT_table),axis=0)
+                        m=m+1
+                    if k==0:
+                        output1=output
+                    else:
+                        output1 = np.concatenate((output1,output),axis=1)
+                    k=k+1
+                output2[j] = output1
+                j=j+1
+            output3[i] = output2
+        output3 = np.transpose(output3,(0,2,1,3))
+        output3 = np.transpose(output3,(0,1,3,2))
+        output3 = output3/255
+        output3 = np.clip(np.float32(output3),0.0,1.0)
+        return output3
+    
         
     def scale_table(self,table_now,Q=50):
         # Q =50
@@ -276,7 +329,22 @@ class defend_my_fd_ago:
             table_now=self.scale_table(table_now)
             auged=self.FD_fuction(img_now,table_now)
             augeds.append(auged)
-        return np.vstack(augeds),labels    
+        return np.vstack(augeds),labels 
+    
+    def defend_channel_wise(self, imgs,eps, labels=None):
+        augeds=[]
+        for i in range(imgs.shape[0]):
+            img_now=np.expand_dims(imgs[i,...],0).squeeze(0)
+            img_now=cv2.cvtColor(img_now, cv2.COLOR_RGB2YCrCb)
+            img_now=np.expand_dims(img_now,axis=0)
+            eps_now=eps[i]
+            table_now=self.tabel_dict[eps_now]
+            table_now=self.scale_table(table_now)
+            auged=self.FD_fuction_channel_wise(img_now,table_now)
+            auged=np.squeeze(auged,axis=0)
+            auged=cv2.cvtColor(auged, cv2.COLOR_YCrCb2RGB)
+            augeds.append(np.expand_dims(auged,axis=0))
+        return np.vstack(augeds),labels 
     
 # FD algorithm
 T = np.array([
@@ -644,6 +712,90 @@ def Cal_qtable(clean_imgs,adv_imgs,thresh):
     block_diff_all[block_diff_all>block_diff_all.max()*thresh]=100
     block_diff_all[block_diff_all<block_diff_all.max()*thresh]=1
     return block_diff_all,Q,np.vstack(block_cln_all),np.vstack(block_adv_all)
+
+def Cal_channel_wise_qtable(clean_imgs,adv_imgs,thresh):
+    n = clean_imgs.shape[0]
+    h = clean_imgs.shape[1]
+    w = clean_imgs.shape[2]
+    c = clean_imgs.shape[3]
+    
+    Q0=np.zeros((c,num,num))
+    block_diff_all=np.zeros((c,num,num))
+
+    block_cln_all=[[] for _ in range(c)]
+    block_adv_all=[[] for _ in range(c)]
+    block_nums=0
+
+
+    horizontal_blocks_num = w / num
+    vertical_blocks_num = h / num
+    n_block_cln = np.split(clean_imgs,n,axis=0)
+    n_block_adv = np.split(adv_imgs,n,axis=0)
+    for i in range(n):
+        c_block_cln = np.split(n_block_cln[i],c,axis =3)
+        c_block_adv = np.split(n_block_adv[i],c,axis =3)
+        for j in range(len(c_block_cln)):
+            ch_block_cln=c_block_cln[j].squeeze()
+            ch_block_adv=c_block_adv[j].squeeze()
+            vertical_blocks_cln = np.split(ch_block_cln, vertical_blocks_num,axis = 1)
+            vertical_blocks_adv = np.split(ch_block_adv, vertical_blocks_num,axis = 1)
+            for k in range(len(vertical_blocks_cln)):
+                block_ver_cln=vertical_blocks_cln[k].squeeze()
+                block_ver_adv=vertical_blocks_adv[k].squeeze()
+                hor_blocks_cln = np.split(block_ver_cln,horizontal_blocks_num,axis = 0)
+                hor_blocks_adv = np.split(block_ver_adv,horizontal_blocks_num,axis = 0)
+                for m in range(len(hor_blocks_cln)):
+                    block_nums+=1
+                    block_cln=hor_blocks_cln[m]
+                    block_adv=hor_blocks_adv[m]
+                    block_cln = np.reshape(block_cln,(num,num))
+                    block_adv = np.reshape(block_adv,(num,num))
+                    
+                    block_cln_dct = dct2(block_cln)
+                    block_adv_dct = dct2(block_adv)
+                    
+                    block_cln_tmp = np.log(1+np.abs(dct2(block_cln)))
+                    block_adv_tmp = np.log(1+np.abs(dct2(block_adv)))
+                    
+                    # block_cln_tmp = np.abs(dct2(block_cln))
+                    # block_adv_tmp = np.abs(dct2(block_adv))
+                    
+                    block_cln_all[j].append(block_cln_tmp.reshape(1,-1))
+                    block_adv_all[j].append(block_adv_tmp.reshape(1,-1))
+                    block_diff = np.abs(block_adv_tmp-block_cln_tmp)
+                    # block_diff = block_diff/(block_cln+1e-10)
+                    # block_diff = cv2.dct(block_adv-block_cln)
+                    # block_diff = np.abs(block_diff/(dct2(block_cln)+1e-10))
+                    
+                    
+                    # block_tmp=np.fft.fft2(block_adv)-np.fft.fft2(block_cln)
+                    # block_diff=np.log(1+np.sqrt(block_tmp.real**2+block_tmp.imag**2))                                    
+                    
+                    # block_cln_all=block_cln_all+block_cln_dct
+                    # block_adv_all=block_adv_all+block_adv_dct
+                    
+                    block_diff_all[j,...]=block_diff_all[j,...]+block_diff
+                    xmax=np.argmax(block_diff)
+                    xq=xmax//num
+                    yq=xmax%num
+                    
+                    Q0[j,xq,yq]+=1
+              
+    # Q=softmax(Q0)
+    Q0[Q0==0]=1
+    Q=(Q0/Q0.min())
+    
+    # block_cln_all_mean=np.vstack(block_cln_all).mean(axis=0).reshape([8,8])
+    # block_adv_all_mean=np.vstack(block_adv_all).mean(axis=0).reshape([8,8])
+    block_diff_out=np.zeros_like(block_diff_all)
+    for i in range(len(block_diff_all)):
+        block_tmp=block_diff_all[i]
+        block_tmp=np.abs(block_tmp)/(block_nums/c)
+    
+        block_tmp[block_tmp>block_tmp.max()*thresh[i]]=100
+        block_tmp[block_tmp<block_tmp.max()*thresh[i]]=1
+        block_diff_out[i,...]=block_tmp
+    return block_diff_out,Q,np.vstack(block_cln_all),np.vstack(block_adv_all)
 
 def padresult(cleandata):
     

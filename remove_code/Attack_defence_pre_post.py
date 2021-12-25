@@ -170,7 +170,9 @@ if __name__=='__main__':
     
     table_pkl='table_dict.pkl'
     fd_ago_new=defend_my_fd_ago(table_pkl)
-    defences_pre.append(fd_ago_new.defend)
+    # defences_pre.append(fd_ago_new.defend)
+    # defences_names_pre.append('fd_ago_my')
+    defences_pre.append(fd_ago_new.defend_channel_wise)
     defences_names_pre.append('fd_ago_my')
     
     # if Q<50:
@@ -230,6 +232,7 @@ if __name__=='__main__':
     读取数据
     '''            
     # 标为原始样本
+    accs=[]
     fprint_list=[]
     prt_info='\n Clean'
     print(prt_info)
@@ -237,12 +240,12 @@ if __name__=='__main__':
     
             
     images_adv=images
-    predictions = fmodel.predict(images_adv)
-    predictions = np.argmax(predictions,axis=1)
-    cor_adv = np.sum(predictions==labels)
-    prt_info='%s: %.1f'%('van',100*cor_adv/len(labels))
-    print(prt_info)
-    fprint_list.append(prt_info)
+    # predictions = fmodel.predict(images_adv)
+    # predictions = np.argmax(predictions,axis=1)
+    # cor_adv = np.sum(predictions==labels)
+    # prt_info='%s: %.1f'%('van',100*cor_adv/len(labels))
+    # print(prt_info)
+    # fprint_list.append(prt_info)
     
     for i in range(len(defences_pre)):
         images_def=images_adv.copy()
@@ -277,26 +280,26 @@ if __name__=='__main__':
         images_adv_list=[]  
         predictions_list=[]  
         batch_num       = int(len(labels_now)/g.label_batch) 
-        images_adv_list=[]
-        for i_attack in range(batch_num):
-            start_idx=g.label_batch*i_attack
-            end_idx=min(g.label_batch*(i_attack+1),len(labels_now))
-            images_adv_tmp  = attack_now.generate(x=images_now[start_idx:end_idx,...])
-            predictions_tmp = fmodel.predict(images_adv_tmp)
-            predictions_tmp = np.argmax(predictions_tmp,axis=1)
-            images_adv_list.append(images_adv_tmp)
-            predictions_list.append(predictions_tmp)
-            torch.cuda.empty_cache()
+        # images_adv_list=[]
+        # for i_attack in range(batch_num):
+        #     start_idx=g.label_batch*i_attack
+        #     end_idx=min(g.label_batch*(i_attack+1),len(labels_now))
+        #     images_adv_tmp  = attack_now.generate(x=images_now[start_idx:end_idx,...])
+        #     predictions_tmp = fmodel.predict(images_adv_tmp)
+        #     predictions_tmp = np.argmax(predictions_tmp,axis=1)
+        #     images_adv_list.append(images_adv_tmp)
+        #     predictions_list.append(predictions_tmp)
+        #     torch.cuda.empty_cache()
         
-        images_adv  = np.vstack(images_adv_list)
-        predictions = np.hstack(predictions_list)
-        cor_adv = np.sum(predictions==labels_now)
-        prt_info='%s: %.1f'%('no_aug',100*cor_adv/len(labels_now))
-        print(prt_info)
-        f=open(file_log,'a')
-        f.write(prt_info+'\n')
-        f.close()
-        fprint_list.append(prt_info)
+        # images_adv  = np.vstack(images_adv_list)
+        # predictions = np.hstack(predictions_list)
+        # cor_adv = np.sum(predictions==labels_now)
+        # prt_info='%s: %.1f'%('no_aug',100*cor_adv/len(labels_now))
+        # print(prt_info)
+        # f=open(file_log,'a')
+        # f.write(prt_info+'\n')
+        # f.close()
+        # fprint_list.append(prt_info)
         
         for i in range(len(defences_pre)):
             images_def=images_adv.copy()
@@ -312,6 +315,7 @@ if __name__=='__main__':
             predictions = np.argmax(predictions,axis=1)
             cor_adv = np.sum(predictions==labels_now)
             prt_info='def_pre %s: %.1f'%(defences_names_pre[i],100*cor_adv/len(labels_now))
+            accs.append(100*cor_adv/len(labels_now))
             print(prt_info)
             f=open(file_log,'a')
             f.write(prt_info+'\n')
@@ -319,6 +323,6 @@ if __name__=='__main__':
             fprint_list.append(prt_info)
             torch.cuda.empty_cache()
             del images_def
-
+    print('\n[Acc mean]:%.3f'%np.vstack(accs).mean())
         
     

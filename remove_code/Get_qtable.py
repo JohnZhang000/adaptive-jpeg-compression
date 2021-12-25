@@ -5,7 +5,7 @@ Created on Mon Dec  6 10:00:21 2021
 
 @author: ubuntu204
 """
-from defense_ago import Cal_qtable
+from defense_ago import Cal_qtable,Cal_channel_wise_qtable
 from tqdm import tqdm
 
 import numpy as np
@@ -16,6 +16,7 @@ import torch.nn as nn
 from my_data_mining import volcano_mine
 import matplotlib.pyplot as plt
 import pickle
+import cv2
 # import torch.nn.functional as F
 
 # from art.attacks.evasion import FastGradientMethod,DeepFool
@@ -102,19 +103,31 @@ def get_shapleys_batch_adv(attack, model, dataloader, num_samples, device):
         images_adv_np=np.vstack(images_adv)
     return images_np,images_adv_np
 
+def rgb2ycbcr(imgs):
+    imgs_out=np.zeros_like(imgs)
+    for i in range(imgs.shape[0]):
+        img_tmp=imgs[i,...]
+        img_tmp=cv2.cvtColor(img_tmp, cv2.COLOR_RGB2YCrCb)
+        imgs_out[i,...]=img_tmp
+    return imgs_out
+
 if __name__=='__main__':    
     '''
     settings
     '''
     # 配置解释器参数
-    if len(sys.argv)!=2:
+    if len(sys.argv)!=4:
         print('Manual Mode !!!')
-        thresh  = 0.3
+        thresh0  = 0.3
+        thresh1  = 0.8
+        thresh2  = 0.8
         # data          = 'test'
         # device        = 0
     else:
         print('Terminal Mode !!!')
-        thresh  = float(sys.argv[1])
+        thresh0  = float(sys.argv[1])
+        thresh1  = float(sys.argv[2])
+        thresh2  = float(sys.argv[3])
         # data        = sys.argv[2]
         # device      = int(sys.argv[3])
     model_vanilla_type    = 'allconv' 
@@ -122,6 +135,7 @@ if __name__=='__main__':
     eps=[0.1,0.5,1.0,10.0]
     device=0
     img_num=100
+    threshs=[thresh0,thresh1,thresh2]
     saved_dir = '../saved_tests/img_attack/accuracy/'+model_vanilla_type
     if not os.path.exists(saved_dir):
         os.makedirs(saved_dir)
@@ -171,8 +185,9 @@ if __name__=='__main__':
     '''
     攻击初始化
     '''
+    # threshs=[0.3,0.8,0.8]
     table_dict=dict()
-    table_dict[0]=np.ones([8,8])
+    table_dict[0]=np.ones([3,8,8])
     for eps_now in eps:
         attacker,_=g.select_attack(fmodel,attacker_name,eps_now)
         
@@ -180,9 +195,11 @@ if __name__=='__main__':
         
         clean_imgs=np.transpose(clean_imgs.copy(),(0,2,3,1))*255
         adv_imgs=np.transpose(adv_imgs.copy(),(0,2,3,1))*255
+        clean_imgs_ycc=rgb2ycbcr(clean_imgs)
+        adv_imgs_ycc=rgb2ycbcr(adv_imgs)
         
         np.set_printoptions(suppress=True)
-        a_qtable,Q,clns,advs=Cal_qtable(clean_imgs, adv_imgs,thresh)
+        a_qtable,Q,clns,advs=Cal_channel_wise_qtable(clean_imgs_ycc, adv_imgs_ycc,threshs)
         a_qtable=np.round(a_qtable)
         Q=np.round(Q)
         table_dict[eps_now]=a_qtable
@@ -194,6 +211,12 @@ if __name__=='__main__':
     
     # adv_show=adv_imgs[0,...]
     # cln_show=clean_imgs[0,...]
+    
+    # # cv2.namedWindow('show')
+    # a=adv_show/255
+    # a=cv2.cvtColor(a, cv2.COLOR_RGB2BGR)
+    # cv2.imshow('show', a)
+    # cv2.waitKey(0)
     
     # plt.figure()
     # plt.imshow(adv_show)

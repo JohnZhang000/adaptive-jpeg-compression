@@ -5,31 +5,44 @@ if [ ! -d "$saved_dir" ]; then
 fi
 log_name=$saved_dir'/terminal_thresh_'$(date +%Y%m%d_%H%M%S)$a'.log'
 
-threshs=(0.26 0.27 0.28 0.29 0.30 0.31 0.32 0.33 0.34 0.35 0.36 0.37 0.38 0.39 0.40 0.41 0.42 0.43 0.44 0.45 0.46 0.47 0.48 0.49 0.50)
+#thresh0=(0.1 0.3 0.5 0.7 0.9)
+#thresh1=(0.1 0.3 0.5 0.7 0.9)
+#thresh2=(0.1 0.3 0.5 0.7 0.9)
 
+thresh0=(0.1 0.3 0.5 0.7 0.9)
+thresh1=(0.1 0.3 0.5 0.7 0.9)
+thresh2=(0.1 0.3 0.5 0.7 0.9)
 
 echo  'SUMMARY:test'                       |tee $log_name
-echo  'model_type:       '${threshs[*]} |tee -a $log_nam
+echo  'thresh0:       '${thresh0[*]} |tee -a $log_name
+echo  'thresh1:       '${thresh1[*]} |tee -a $log_name
+echo  'thresh2:       '${thresh2[*]} |tee -a $log_name
 
 ####################################################################################
 echo  ''                                                                                                 |tee -a $log_name
 echo  '******************************Test thresh *********************************'   |tee -a $log_name
 
-for ((i=0;i<${#threshs[*]};i++))
+for ((i=0;i<${#thresh0[*]};i++))
 do 
+    for ((j=0;j<${#thresh1[*]};j++))
+    do 
+        for ((k=0;k<${#thresh2[*]};k++))
+        do 
 
-            thresh_now=${threshs[i]}
+            thresh0_now=${thresh0[i]}
+            thresh1_now=${thresh1[j]}
+            thresh2_now=${thresh2[k]}
             
-            echo  ''                                     |tee -a $log_name
-            echo  'thresh_now:            '${thresh_now}           |tee -a $log_name
+            echo  ''                                                            |tee -a $log_name
+            echo  'thresh_now: '${thresh0_now}' '${thresh1_now}' '${thresh2_now}   |tee -a $log_name
 
 
-            CUDA_VISIBLE_DEVICES=0,1 python ../remove_code/Get_qtable.py $thresh_now   |tee -a $log_name
+            CUDA_VISIBLE_DEVICES=0,1 python ../remove_code/Get_qtable.py $thresh0_now $thresh1_now $thresh2_now   |tee -a $log_name
             sleep 3
             CUDA_VISIBLE_DEVICES=0,1 python ../remove_code/Attack_defence_pre_post.py   |tee -a $log_name
 
             end_time=$(date +%Y%m%d_%H%M%S)$a
             echo  'end_time:       '${end_time}    |tee -a $log_name
-
-
+        done
+    done
 done

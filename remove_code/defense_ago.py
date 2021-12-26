@@ -203,6 +203,7 @@ class defend_my_fd_ago:
     def __init__(self,table_pkl,threshs):
         self.tabel_dict=pickle.load(open(table_pkl,'rb'))
         self.threshs=threshs
+        self.abs_threshs=np.zeros_like(self.threshs)
           
     def FD_fuction(self,input_matrix,table_now):
         output = []
@@ -308,10 +309,10 @@ class defend_my_fd_ago:
         output3 = np.clip(np.float32(output3),0.0,1.0)
         return output3
     
-    def get_adaptive_table(self,imgs,base_imgs):
+    def get_adaptive_table(self,imgs):
         imgs_dct=self.img2dct(imgs)
-        base_imgs_dct=self.img2dct(base_imgs)        
-        diff_dct=imgs_dct-base_imgs_dct
+        # base_imgs_dct=self.img2dct(base_imgs)        
+        diff_dct=imgs_dct-self.base_imgs_dct
         
         tables=np.ones_like(diff_dct)
         # for i in range(diff_dct.shape[0]):
@@ -323,11 +324,12 @@ class defend_my_fd_ago:
         #         tables[i,:,:,j]=block_tmp
         # tables[tables==0]=1   
         
-        threshs=np.ones_like(self.threshs)
-        for i in range(len(threshs)):
-            block_tmp=base_imgs_dct[:,:,:,i]
-            block_tmp_mean=block_tmp.mean(axis=0)
-            threshs[i]=block_tmp_mean.max()*self.threshs[i]
+        threshs=self.abs_threshs
+        # threshs=np.ones_like(self.threshs)
+        # for i in range(len(threshs)):
+        #     block_tmp=base_imgs_dct[:,:,:,i]
+        #     block_tmp_mean=block_tmp.mean(axis=0)
+        #     threshs[i]=block_tmp_mean.max()*self.threshs[i]
         
         for i in range(diff_dct.shape[0]):
             for j in range(diff_dct.shape[3]):
@@ -419,11 +421,11 @@ class defend_my_fd_ago:
         imgs_out[...,2]=cr
         return imgs_out
     
-    def defend_channel_wise_adaptive_table(self, imgs,base_imgs, labels=None):
+    def defend_channel_wise_adaptive_table(self, imgs, labels=None):
         augeds=[]
         imgs=self.rgb_to_ycbcr(imgs)
-        base_imgs=self.rgb_to_ycbcr(base_imgs)
-        tables=self.get_adaptive_table(imgs,base_imgs)
+        # base_imgs=self.rgb_to_ycbcr(base_imgs)
+        tables=self.get_adaptive_table(imgs)
         
         for i in range(imgs.shape[0]):
             img_now=np.expand_dims(imgs[i,...],0)
@@ -464,7 +466,14 @@ class defend_my_fd_ago:
         return block_dct
     
     def get_cln_dct(self,clean_imgs):
-        imgs_dct=self.img2dct(clean_imgs)
+        self.base_imgs_dct=np.zeros((num,num,clean_imgs.shape[3]))
+        imgs_ycbcr=self.rgb_to_ycbcr(clean_imgs)
+        imgs_dct=self.img2dct(imgs_ycbcr)
+        for i in range(imgs_dct.shape[3]):
+            block_tmp=imgs_dct[:,:,:,i]
+            block_tmp_mean=block_tmp.mean(axis=0)
+            self.base_imgs_dct[:,:,i]=block_tmp_mean
+            self.abs_threshs[i]=block_tmp_mean.max()*self.threshs[i]
         
     
 # FD algorithm
@@ -841,7 +850,7 @@ def Cal_channel_wise_qtable(clean_imgs,adv_imgs,thresh):
     c = clean_imgs.shape[3]
     
     Q0=np.zeros((c,num,num))
-    block_diff_all=np.zeros((c,num,num))
+    block_diff_all=np.zeros((num,num,c))
 
     block_cln_all=[[] for _ in range(c)]
     block_adv_all=[[] for _ in range(c)]
@@ -881,8 +890,8 @@ def Cal_channel_wise_qtable(clean_imgs,adv_imgs,thresh):
                     # block_cln_tmp = np.abs(dct2(block_cln))
                     # block_adv_tmp = np.abs(dct2(block_adv))
                     
-                    block_cln_all[j].append(block_cln_tmp.reshape(1,-1))
-                    block_adv_all[j].append(block_adv_tmp.reshape(1,-1))
+                    block_cln_all[j].append(np.expand_dims(block_cln_tmp,axis=0))
+                    block_adv_all[j].append(np.expand_dims(block_adv_tmp,axis=0))
                     block_diff = np.abs(block_adv_tmp-block_cln_tmp)
                     # block_diff = block_diff/(block_cln+1e-10)
                     # block_diff = cv2.dct(block_adv-block_cln)
@@ -895,7 +904,7 @@ def Cal_channel_wise_qtable(clean_imgs,adv_imgs,thresh):
                     # block_cln_all=block_cln_all+block_cln_dct
                     # block_adv_all=block_adv_all+block_adv_dct
                     
-                    block_diff_all[j,...]=block_diff_all[j,...]+block_diff
+                    block_diff_all[...,j]=block_diff_all[...,j]+block_diff
                     xmax=np.argmax(block_diff)
                     xq=xmax//num
                     yq=xmax%num

@@ -13,6 +13,8 @@ import torch.nn.functional as F
 import matplotlib.pyplot as plt
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
+from torch.nn import CrossEntropyLoss,MSELoss
+from torch.optim import SGD,Adam
 import os
 import time
 import sys
@@ -26,9 +28,69 @@ import logging
 sys.path.append('../common_code')
 import general as g
 
+
+class Net(nn.Module):
+    def __init__(self):
+        super(Net, self).__init__()
+        self.conv1 = nn.Conv2d(3, 6, 5)
+        self.bn1 = nn.BatchNorm2d(6)
+        self.relu1 = nn.ReLU()
+        self.pool1 = nn.MaxPool2d(2)
+        self.conv2 = nn.Conv2d(6, 16, 5)
+        self.bn2 = nn.BatchNorm2d(16)
+        self.relu2 = nn.ReLU()
+        self.pool2 = nn.MaxPool2d(2)
+        self.fc1 = nn.Linear(400, 120)
+        self.relu3 = nn.ReLU()
+        self.fc2 = nn.Linear(120, 84)
+        self.relu4 = nn.ReLU()
+        self.fc3 = nn.Linear(84, 10)
+        self.relu5 = nn.ReLU()
+        self.fc4 = nn.Linear(10, 1)
+
+    def forward(self, x):
+        y = self.conv1(x)
+        y = self.bn1(y)
+        y = self.relu1(y)
+        y = self.pool1(y)
+        y = self.conv2(y)
+        y = self.bn2(y)
+        y = self.relu2(y)
+        y = self.pool2(y)
+        y = y.view(y.shape[0], -1)
+        y = self.fc1(y)
+        y = self.relu3(y)
+        y = self.fc2(y)
+        y = self.relu4(y)
+        y = self.fc3(y)
+        y = self.relu5(y)
+        y = self.fc4(y)
+        # y = self.relu6(y)
+        # y = self.fc5(y)
+        y = y.squeeze(1)
+        return y
+    
+    def init_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                if m.weight is not None:
+                    torch.nn.init.kaiming_normal_(m.weight.data)
+                if m.bias is not None:
+                    torch.nn.init.zeros_(m.bias.data)
+            elif isinstance(m, nn.Conv2d):
+                if m.weight is not None:
+                    torch.nn.init.kaiming_normal_(m.weight.data)
+                if m.bias is not None:
+                    torch.nn.init.zeros_(m.bias.data)
+            elif isinstance(m, nn.BatchNorm2d):
+                if m.weight is not None:
+                    torch.nn.init.constant_(m.weight.data,1.0)
+                if m.bias is not None:
+                    torch.nn.init.constant_(m.bias.data,0.0)
+                    
 class spectrum_dataset(Dataset):
     def __init__(self,data_dir,label_dir,mean_std=None):
-        self.spectrums=np.load(data_dir).astype(np.float32)
+        self.spectrums=np.load(data_dir).astype(np.float32).transpose(0,3,1,2)
         self.labels=np.load(label_dir).astype(np.float32)
         self.mean_std=mean_std
         
@@ -40,7 +102,7 @@ class spectrum_dataset(Dataset):
         if self.mean_std:
             spectrum = (spectrum-self.mean_std[0])/self.mean_std[1]
             
-        label= float(self.labels[idx,:])
+        label= self.labels[idx]
         return spectrum, label
 
 def train(train_loader, model, criterion, optimizer, epoch,loss_list):
@@ -85,13 +147,19 @@ def save_checkpoint(state, is_best, s_dir, filename='checkpoint.pth.tar'):
     if is_best:
         shutil.copyfile(os.path.join(s_dir,filename),os.path.join(s_dir,'model_best.pth.tar'))
 
-# def setup_seed(seed):
-#     torch.manual_seed(seed)
-#     torch.cuda.manual_seed_all(seed)
-#     np.random.seed(seed)
-#     # random.seed(seed)
-#     torch.backends.cudnn.deterministic = True
-
+def my_loss(pred,gt):
+    # pred_in=pred
+    # gt_in=gt
+    # diff=(pred-gt)/gt_in
+    # diff=torch.clamp_max(diff.abs(), 100)
+    
+    factor=1+torch.abs(torch.log10(gt))
+    mse=pred-gt
+    
+    loss=factor*torch.pow(mse, 2)
+    
+    return loss.mean()
+    
 if __name__=='__main__':   
     '''
     settings
@@ -121,8 +189,15 @@ if __name__=='__main__':
         dataset='imagenet'
     s_dir      = '../saved_tests/img_attack_reg/spectrum_label'
     data_dir      = os.path.join(s_dir,model_type)
+    #cnn-params
+    cnn_max_lr     = g.cnn_max_lr
+    cnn_epochs     = g.cnn_epochs
+    cnn_batch_size = g.cnn_batch_size
+    
     train_dataset = spectrum_dataset(data_dir+'/spectrums_test.npy',data_dir+'/labels_test.npy')
-    test_dataset  = spectrum_dataset(data_dir+'/spectrums_test.npy',data_dir+'/labels_test.npy')        
+    test_dataset  = spectrum_dataset(data_dir+'/spectrums_test.npy',data_dir+'/labels_test.npy') 
+    train_loader = DataLoader(train_dataset, batch_size=cnn_batch_size,shuffle=True)
+    test_loader = DataLoader(test_dataset, batch_size=cnn_batch_size)       
     logging.basicConfig(filename=os.path.join(data_dir,'log_train.txt'),
                         level=logging.INFO)
     logging.info(('\n----------record-start-----------'))
@@ -135,77 +210,53 @@ if __name__=='__main__':
     svm_gamma=g.svm_gamma
     svm_c=g.svm_c
     
-    #cnn-params
-    cnn_max_lr     = g.cnn_max_lr
-    cnn_epochs     = g.cnn_epochs
-    cnn_batch_size = g.cnn_batch_size
+    model = Net()
+    optimizer = Adam(model.parameters(),lr=cnn_max_lr)
+    cost = MSELoss(reduction='sum')#CrossEntropyLoss()
+    epoch = cnn_epochs
+    best_loss = 1000
     
-    '''
-    Adaboost
-    '''
-    start_time = time.time()
-    bdt = AdaBoostRegressor(DecisionTreeRegressor(max_depth=adb_max_depth),
-                              loss="square",
-                              n_estimators=adb_epochs)
-    bdt.fit(train_dataset.spectrums,train_dataset.labels)
+    for _epoch in range(epoch):
+        model.train()
+        for idx, (train_x, train_label) in enumerate(train_loader):
+            # label_np = np.zeros((train_label.shape[0], 10))
+            optimizer.zero_grad()
+            predict_y = model(train_x.float())
+            loss = cost(predict_y, train_label)
+            if idx % 10 == 0:
+                print('[Epoch]:{}, idx: {}, loss: {}'.format(_epoch, idx, loss.sum().item()))
+            loss.backward()
+            optimizer.step()
     
-    joblib.dump(bdt,os.path.join(data_dir,model_type+'_adaboost.pkl'))
-    clf_bdt=joblib.load(os.path.join(data_dir,model_type+'_adaboost.pkl'))
-    end_time=time.time()
-    prt_info=("[Adaboost] Train Time %f s") % (end_time-start_time)
-    print(prt_info)
-    logging.info(prt_info)
-    prt_info=("[Adaboost] Train acc %f") % clf_bdt.score(train_dataset.spectrums,train_dataset.labels)
-    print(prt_info)
-    logging.info(prt_info)
-    prt_info=("[Adaboost] Test acc %f") % clf_bdt.score(test_dataset.spectrums,test_dataset.labels)
-    print(prt_info)
-    logging.info(prt_info)
-    print('Adaboost Done')
-
+        correct = 0
+        sum_loss = 0
+        model.eval()
+        for idx, (test_x, test_label) in enumerate(test_loader):
+            predict_y = model(test_x.float()).detach()
+            label_np = test_label#.numpy()
+            test_loss=cost(predict_y, label_np)
+            sum_loss+=test_loss
+            
+        is_best = sum_loss<best_loss
+        ave_loss=sum_loss / len(test_loader.dataset)
+        print('[Epoch]:{}, ave_loss: {:.8f}'.format(_epoch, ave_loss))
+        # torch.save(model, 'models/mnist_{:.4f}.pkl'.format(ave_loss))
+        save_checkpoint({'epoch':_epoch+1,
+                         'state_dict':model.state_dict(),
+                         'optimizer':optimizer.state_dict(),
+                         }, is_best, data_dir)
     
-    # '''
-    # SVM
-    # '''
-    # start_time = time.time()
-    # svc_p=SVR(kernel='rbf',gamma=svm_gamma,C=svm_c)
-    # svc_p.fit(train_dataset.spectrums,train_dataset.labels)
-    # joblib.dump(svc_p,os.path.join(data_dir,model_type+'_svm.pkl'))
-    # clf_svc=joblib.load(os.path.join(data_dir,model_type+'_svm.pkl'))
-    # end_time=time.time()
-    # prt_info=("[SVM] Train Time %f s") % (end_time-start_time)
-    # print(prt_info)
-    # logging.info(prt_info)
-    # prt_info=("[SVM] Train acc %f") % clf_svc.score(train_dataset.spectrums,train_dataset.labels)
-    # print(prt_info)
-    # logging.info(prt_info)
-    # prt_info=("[SVM] Test acc %f") % clf_svc.score(test_dataset.spectrums,test_dataset.labels)
-    # print(prt_info)
-    # logging.info(prt_info)
-    # print('Adaboost Done')
+    preds=[]
+    gts=[]
+    for idx, (test_x, test_label) in enumerate(test_loader):
+        predict_y = model(test_x.float()).detach()
+        preds.append(predict_y.numpy())
+        gts.append(test_label.numpy())
     
-    '''
-    other
-    '''
-    start_time = time.time()
-    svc_p=LassoCV(normalize=True,cv=5,random_state=0)
-    svc_p.fit(train_dataset.spectrums,train_dataset.labels)
-    joblib.dump(svc_p,os.path.join(data_dir,model_type+'_other.pkl'))
-    clf_svc=joblib.load(os.path.join(data_dir,model_type+'_other.pkl'))
-    end_time=time.time()
-    prt_info=("[other] Train Time %f s") % (end_time-start_time)
-    print(prt_info)
-    logging.info(prt_info)
-    prt_info=("[other] Train acc %f") % clf_svc.score(train_dataset.spectrums,train_dataset.labels)
-    print(prt_info)
-    logging.info(prt_info)
-    prt_info=("[other] Test acc %f") % clf_svc.score(test_dataset.spectrums,test_dataset.labels)
-    print(prt_info)
-    logging.info(prt_info)
-    print('other Done')
-    
-    a=clf_svc.predict(test_dataset.spectrums)
-    a1=test_dataset.labels
-    aa=np.concatenate((a.reshape(-1,1),a1.reshape(-1,1)),axis=1)
-    
-        
+    gts_np=np.hstack(gts)
+    preds_np=np.hstack(preds)
+    a=np.hstack((gts_np.reshape(-1,1),preds_np.reshape(-1,1)))
+    a1=a[:,1]-a[:,0]
+    a2=(a1)/a[:,0]
+    # ave_loss=sum_loss / len(test_loader.dataset)
+    # print('ave_loss: {:.4f}'.format(ave_loss))

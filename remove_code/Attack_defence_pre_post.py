@@ -47,9 +47,9 @@ if __name__=='__main__':
     # 配置解释器参数
     if len(sys.argv)!=4:
         print('Manual Mode !!!')
-        thresh0  = 0.001
-        thresh1  = 0.001
-        thresh2  = 0.001
+        thresh0  = 0.00075
+        thresh1  = 0.00075
+        thresh2  = 0.00075
     else:
         print('Terminal Mode !!!')
         thresh0  = float(sys.argv[1])
@@ -173,12 +173,15 @@ if __name__=='__main__':
     table_pkl='table_dict.pkl'
     # threshs=[0.001,0.001,0.001]
     fd_ago_new=defend_my_fd_ago(table_pkl,threshs)
+    fd_ago_new.get_cln_dct(images.transpose(0,2,3,1).copy())
+    print(fd_ago_new.abs_threshs)
     # defences_pre.append(fd_ago_new.defend)
     # defences_names_pre.append('fd_ago_my')
-    # defences_pre.append(fd_ago_new.defend_channel_wise)
-    # defences_names_pre.append('fd_ago_my')
-    defences_pre.append(fd_ago_new.defend_channel_wise_adaptive_table)
-    defences_names_pre.append('fd_ago_my_ada')
+    defences_pre.append(fd_ago_new.defend_channel_wise)
+    defences_names_pre.append('fd_ago_my')
+    # defences_pre.append(fd_ago_new.defend_channel_wise_adaptive_table)
+    # defences_names_pre.append('fd_ago_my_ada')
+    
     
     # if Q<50:
     #     S=5000/Q
@@ -257,7 +260,7 @@ if __name__=='__main__':
         if 'fd_ago_my'==defences_names_pre[i]:
             images_in,labels_in = defences_pre[i](images_def.transpose(0,2,3,1),0*np.ones(images_def.shape[0]),labels.copy())
         elif 'fd_ago_my_ada'==defences_names_pre[i]:
-            images_in,labels_in = defences_pre[i](images_def.transpose(0,2,3,1).copy(),images.transpose(0,2,3,1).copy(),labels.copy())
+            images_in,labels_in = defences_pre[i](images_def.transpose(0,2,3,1).copy(),labels.copy())
         else:
             images_in,labels_in = defences_pre[i](images_def.transpose(0,2,3,1),labels.copy())
         predictions = fmodel.predict(images_in.transpose(0,3,1,2))
@@ -317,7 +320,7 @@ if __name__=='__main__':
                     eps_pred=attack_now.eps
                 images_in,labels_in = defences_pre[i](images_def.transpose(0,2,3,1),eps_pred*np.ones(images_def.shape[0]),labels.copy())
             elif 'fd_ago_my_ada'==defences_names_pre[i]:
-                images_in,labels_in = defences_pre[i](images_def.transpose(0,2,3,1).copy(),images.transpose(0,2,3,1).copy(),labels.copy())
+                images_in,labels_in = defences_pre[i](images_def.transpose(0,2,3,1).copy(),labels.copy())
             else:
                 images_in,labels_in = defences_pre[i](images_def.transpose(0,2,3,1),labels.copy())
             predictions = fmodel.predict(images_in.transpose(0,3,1,2))

@@ -160,9 +160,9 @@ if __name__=='__main__':
         dir_cifar     = g.dir_cifar
         eps_L2=g.eps_L2_label_cifar
         if 'test'==data:
-            images,labels = load_CIFAR_batch(os.path.join(dir_cifar,'test_batch'))
+            images,labels = load_CIFAR_batch(os.path.join(dir_cifar,'cifar-10-batches-py/test_batch'))
         elif 'train'==data:
-            images,labels = load_CIFAR_train(dir_cifar)
+            images,labels = load_CIFAR_train(os.path.join(dir_cifar,'cifar-10-batches-py'))
         else:
             print('Wrong data mode !!!')
     elif 'imagenet'==dataset:
@@ -206,26 +206,28 @@ if __name__=='__main__':
         attack,eps=g.select_attack(fmodel,g.attack_names[attack_name], attack_eps)                
         images_adv_tmp=attack.generate(x=images_batch,y=labels_batch)
         
-        #
-        pred=fmodel.predict(images_adv_tmp).argmax(axis=1)
-        succ_attack=(labels_batch!=pred)
-        if sum(succ_attack)==0:
-            continue
-        else:
-            images_adv_suc=images_adv_tmp[succ_attack,...]
-            labels_batch_suc=labels_batch[succ_attack,...]
+        images_ycbcr=g.rgb_to_ycbcr(images_adv_tmp.transpose(0,2,3,1))
+        images_dct=g.img2dct(images_ycbcr)
+        # #
+        # pred=fmodel.predict(images_adv_tmp).argmax(axis=1)
+        # succ_attack=(labels_batch!=pred)
+        # if sum(succ_attack)==0:
+        #     continue
+        # else:
+        #     images_adv_suc=images_adv_tmp[succ_attack,...]
+        #     labels_batch_suc=labels_batch[succ_attack,...]
         
         
-        # 根据列表标为有害或无害样本
-        flag_rober=0
-        for m in range(rober_np.shape[0]):
-            if (attack_name==rober_np[m,0]) and (attack_eps==rober_np[m,1]):
-                flag_rober=1
-                break
+        # # 根据列表标为有害或无害样本
+        # flag_rober=0
+        # for m in range(rober_np.shape[0]):
+        #     if (attack_name==rober_np[m,0]) and (attack_eps==rober_np[m,1]):
+        #         flag_rober=1
+        #         break
         
-        spectrums_save,labels_save=labeler.get_energy_label(model, images_adv_suc, labels_batch_suc, flag_rober)
-        spectrums_list.append(spectrums_save)
-        labels_list.append(eps*np.ones(spectrums_save.shape[0]))
+        # spectrums_save,labels_save=labeler.get_energy_label(model, images_adv_suc, labels_batch_suc, flag_rober)
+        spectrums_list.append(images_dct)
+        labels_list.append(eps*np.ones(images_dct.shape[0]))
                 
     spectrums_np=np.vstack(spectrums_list)
     labels_np=np.hstack(labels_list)

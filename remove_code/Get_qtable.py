@@ -187,7 +187,7 @@ if __name__=='__main__':
     '''
     # threshs=[0.3,0.8,0.8]
     table_dict=dict()
-    table_dict[0]=np.ones([3,8,8])
+    table_dict[0]=np.ones([8,8,3])
     for eps_now in eps:
         attacker,_=g.select_attack(fmodel,attacker_name,eps_now)
         

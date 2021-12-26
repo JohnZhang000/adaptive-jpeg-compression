@@ -23,6 +23,7 @@ from torchvision import datasets
 # from torchvision.datasets import mnist,CIFAR10
 from torchvision.transforms import ToTensor
 import torchvision.transforms as transforms
+from scipy.fftpack import dct
 
 attack_names=['FGSM_L2_IDP','PGD_L2_IDP','CW_L2_IDP','Deepfool_L2_IDP','FGSM_Linf_IDP','PGD_Linf_IDP','CW_Linf_IDP']
 eps_L2=[0.1,1.0,10.0]
@@ -76,7 +77,7 @@ levels_end_imagenet=6
 shap_batch_imagenet=500
 spectrum_batch_imagenet=500
 
-label_batch=2000
+label_batch=10
 pred_batch=100
 
 max_img_in_uap_attack=100
@@ -90,8 +91,8 @@ svm_gamma=0.1
 svm_c=5
 
 #cnn-params
-cnn_max_lr     = 0.001
-cnn_epochs     = 200
+cnn_max_lr     = 3e-4
+cnn_epochs     = 300
 cnn_batch_size = 256#*16*5
     
 
@@ -194,3 +195,63 @@ def load_dataset(dataset,dataset_dir,dataset_type='train'):
     else:
         raise Exception('Wrong dataset')
     return ret_datasets
+
+def ycbcr_to_rgb(imgs):
+    assert(4==len(imgs.shape))
+    assert(imgs.shape[1]==imgs.shape[2])
+    
+    y=imgs[...,0]
+    cb=imgs[...,1]
+    cr=imgs[...,2]
+    
+    delta=0.5
+    cb_shift=cb-delta
+    cr_shift=cr-delta
+    
+    r=y+1.403*cr_shift
+    g=y-0.714*cr_shift-0.344*cb_shift
+    b=y+1.773*cb_shift
+    
+    imgs_out=np.zeros_like(imgs)
+    imgs_out[...,0]=r
+    imgs_out[...,1]=g
+    imgs_out[...,2]=b
+    return imgs_out
+
+def rgb_to_ycbcr(imgs):
+    assert(4==len(imgs.shape))
+    assert(imgs.shape[1]==imgs.shape[2])
+    
+    r=imgs[...,0]
+    g=imgs[...,1]
+    b=imgs[...,2]
+    
+    delta=0.5
+    y=0.299*r+0.587*g+0.114*b
+    cb=(b-y)*0.564+delta
+    cr=(r-y)*0.713+delta
+    
+    imgs_out=np.zeros_like(imgs)
+    imgs_out[...,0]=y
+    imgs_out[...,1]=cb
+    imgs_out[...,2]=cr
+    return imgs_out
+
+def dct2 (block):
+    return dct(dct(block.T, norm = 'ortho').T, norm = 'ortho')
+
+def img2dct(clean_imgs):
+    assert(4==len(clean_imgs.shape))
+    assert(clean_imgs.shape[1]==clean_imgs.shape[2])
+    n = clean_imgs.shape[0]
+    h = clean_imgs.shape[1]
+    w = clean_imgs.shape[2]
+    c = clean_imgs.shape[3]
+    
+    block_dct=np.zeros_like(clean_imgs)
+    for i in range(n):
+        for j in range(c):
+            ch_block_cln=clean_imgs[i,:,:,j]                   
+            block_cln_tmp = np.log(1+np.abs(dct2(ch_block_cln)))
+            block_dct[i,:,:,j]=block_cln_tmp
+    return block_dct

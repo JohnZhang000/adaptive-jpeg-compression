@@ -45,17 +45,19 @@ if __name__=='__main__':
     settings
     '''
     # 配置解释器参数
-    if len(sys.argv)!=2:
+    if len(sys.argv)!=4:
         print('Manual Mode !!!')
-        model_vanilla_type    = 'allconv'
-        # data          = 'test'
-        # device        = 0
+        thresh0  = 0.001
+        thresh1  = 0.001
+        thresh2  = 0.001
     else:
         print('Terminal Mode !!!')
-        model_vanilla_type  = sys.argv[1]
-        # data        = sys.argv[2]
-        # device      = int(sys.argv[3])
-        
+        thresh0  = float(sys.argv[1])
+        thresh1  = float(sys.argv[2])
+        thresh2  = float(sys.argv[3])
+    
+    threshs=[thresh0,thresh1,thresh2]
+    model_vanilla_type    = 'allconv'
     saved_dir = '../saved_tests/img_attack/accuracy/'+model_vanilla_type
     if not os.path.exists(saved_dir):
         os.makedirs(saved_dir)
@@ -169,11 +171,14 @@ if __name__=='__main__':
     # defences_names_pre.append('FD_ago')
     
     table_pkl='table_dict.pkl'
-    fd_ago_new=defend_my_fd_ago(table_pkl)
+    # threshs=[0.001,0.001,0.001]
+    fd_ago_new=defend_my_fd_ago(table_pkl,threshs)
     # defences_pre.append(fd_ago_new.defend)
     # defences_names_pre.append('fd_ago_my')
-    defences_pre.append(fd_ago_new.defend_channel_wise)
-    defences_names_pre.append('fd_ago_my')
+    # defences_pre.append(fd_ago_new.defend_channel_wise)
+    # defences_names_pre.append('fd_ago_my')
+    defences_pre.append(fd_ago_new.defend_channel_wise_adaptive_table)
+    defences_names_pre.append('fd_ago_my_ada')
     
     # if Q<50:
     #     S=5000/Q
@@ -239,7 +244,7 @@ if __name__=='__main__':
     fprint_list.append(prt_info)
     
             
-    images_adv=images
+    images_adv=images.copy()
     predictions = fmodel.predict(images_adv)
     predictions = np.argmax(predictions,axis=1)
     cor_adv = np.sum(predictions==labels)
@@ -251,6 +256,8 @@ if __name__=='__main__':
         images_def=images_adv.copy()
         if 'fd_ago_my'==defences_names_pre[i]:
             images_in,labels_in = defences_pre[i](images_def.transpose(0,2,3,1),0*np.ones(images_def.shape[0]),labels.copy())
+        elif 'fd_ago_my_ada'==defences_names_pre[i]:
+            images_in,labels_in = defences_pre[i](images_def.transpose(0,2,3,1).copy(),images.transpose(0,2,3,1).copy(),labels.copy())
         else:
             images_in,labels_in = defences_pre[i](images_def.transpose(0,2,3,1),labels.copy())
         predictions = fmodel.predict(images_in.transpose(0,3,1,2))
@@ -309,6 +316,8 @@ if __name__=='__main__':
                 else:
                     eps_pred=attack_now.eps
                 images_in,labels_in = defences_pre[i](images_def.transpose(0,2,3,1),eps_pred*np.ones(images_def.shape[0]),labels.copy())
+            elif 'fd_ago_my_ada'==defences_names_pre[i]:
+                images_in,labels_in = defences_pre[i](images_def.transpose(0,2,3,1).copy(),images.transpose(0,2,3,1).copy(),labels.copy())
             else:
                 images_in,labels_in = defences_pre[i](images_def.transpose(0,2,3,1),labels.copy())
             predictions = fmodel.predict(images_in.transpose(0,3,1,2))

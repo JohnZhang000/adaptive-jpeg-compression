@@ -200,9 +200,10 @@ def defend_GD(img,distort_limit = 0.25):
 class defend_my_fd_ago:
 
     # 解释器初始化
-    def __init__(self,table_pkl):
+    def __init__(self,table_pkl,threshs):
         self.tabel_dict=pickle.load(open(table_pkl,'rb'))
-                
+        self.threshs=threshs
+          
     def FD_fuction(self,input_matrix,table_now):
         output = []
         input_matrix = input_matrix*255
@@ -283,10 +284,10 @@ class defend_my_fd_ago:
                         block = np.reshape(block,(num,num))
                         block = dct2(block)
                         # quantization
-                        table_quantized = np.matrix.round(np.divide(block, table_now[j]))
+                        table_quantized = np.matrix.round(np.divide(block, table_now[:,:,j]))
                         table_quantized = np.squeeze(np.asarray(table_quantized))
                         # de-quantization
-                        table_unquantized = table_quantized*table_now[j]
+                        table_unquantized = table_quantized*table_now[:,:,j]
                         IDCT_table = idct2(table_unquantized)
                         if m==0:
                             output=IDCT_table
@@ -307,6 +308,37 @@ class defend_my_fd_ago:
         output3 = np.clip(np.float32(output3),0.0,1.0)
         return output3
     
+    def get_adaptive_table(self,imgs,base_imgs):
+        imgs_dct=self.img2dct(imgs)
+        base_imgs_dct=self.img2dct(base_imgs)        
+        diff_dct=imgs_dct-base_imgs_dct
+        
+        tables=np.ones_like(diff_dct)
+        # for i in range(diff_dct.shape[0]):
+        #     for j in range(diff_dct.shape[3]):
+        #         block_tmp=diff_dct[i,:,:,j]
+            
+        #         block_tmp[block_tmp>block_tmp.max()*self.threshs[j]]=100
+        #         block_tmp[block_tmp<block_tmp.max()*self.threshs[j]]=1
+        #         tables[i,:,:,j]=block_tmp
+        # tables[tables==0]=1   
+        
+        threshs=np.ones_like(self.threshs)
+        for i in range(len(threshs)):
+            block_tmp=base_imgs_dct[:,:,:,i]
+            block_tmp_mean=block_tmp.mean(axis=0)
+            threshs[i]=block_tmp_mean.max()*self.threshs[i]
+        
+        for i in range(diff_dct.shape[0]):
+            for j in range(diff_dct.shape[3]):
+                block_tmp=diff_dct[i,:,:,j]
+            
+                block_tmp[block_tmp>threshs[j]]=100
+                block_tmp[block_tmp<threshs[j]]=1
+                tables[i,:,:,j]=block_tmp
+        tables[tables==0]=1   
+        return tables
+           
         
     def scale_table(self,table_now,Q=50):
         # Q =50
@@ -345,6 +377,95 @@ class defend_my_fd_ago:
             auged=cv2.cvtColor(auged, cv2.COLOR_YCrCb2RGB)
             augeds.append(np.expand_dims(auged,axis=0))
         return np.vstack(augeds),labels 
+        
+    def ycbcr_to_rgb(self,imgs):
+        assert(4==len(imgs.shape))
+        assert(imgs.shape[1]==imgs.shape[2])
+        
+        y=imgs[...,0]
+        cb=imgs[...,1]
+        cr=imgs[...,2]
+        
+        delta=0.5
+        cb_shift=cb-delta
+        cr_shift=cr-delta
+        
+        r=y+1.403*cr_shift
+        g=y-0.714*cr_shift-0.344*cb_shift
+        b=y+1.773*cb_shift
+        
+        imgs_out=np.zeros_like(imgs)
+        imgs_out[...,0]=r
+        imgs_out[...,1]=g
+        imgs_out[...,2]=b
+        return imgs_out
+    
+    def rgb_to_ycbcr(self,imgs):
+        assert(4==len(imgs.shape))
+        assert(imgs.shape[1]==imgs.shape[2])
+        
+        r=imgs[...,0]
+        g=imgs[...,1]
+        b=imgs[...,2]
+        
+        delta=0.5
+        y=0.299*r+0.587*g+0.114*b
+        cb=(b-y)*0.564+delta
+        cr=(r-y)*0.713+delta
+        
+        imgs_out=np.zeros_like(imgs)
+        imgs_out[...,0]=y
+        imgs_out[...,1]=cb
+        imgs_out[...,2]=cr
+        return imgs_out
+    
+    def defend_channel_wise_adaptive_table(self, imgs,base_imgs, labels=None):
+        augeds=[]
+        imgs=self.rgb_to_ycbcr(imgs)
+        base_imgs=self.rgb_to_ycbcr(base_imgs)
+        tables=self.get_adaptive_table(imgs,base_imgs)
+        
+        for i in range(imgs.shape[0]):
+            img_now=np.expand_dims(imgs[i,...],0)
+                        
+            auged=self.FD_fuction_channel_wise(img_now,tables[i,...])
+            
+            augeds.append(auged)
+        augeds=np.vstack(augeds)
+        augeds=self.ycbcr_to_rgb(augeds)
+        return augeds,labels 
+    
+    def img2dct(self,clean_imgs):
+        n = clean_imgs.shape[0]
+        h = clean_imgs.shape[1]
+        w = clean_imgs.shape[2]
+        c = clean_imgs.shape[3]
+        
+        block_dct=np.zeros((n,num,num,c))
+
+        horizontal_blocks_num = w / num
+        vertical_blocks_num = h / num
+        n_block_cln = np.split(clean_imgs,n,axis=0)
+        for i in range(n):
+            c_block_cln = np.split(n_block_cln[i],c,axis =3)
+            for j in range(len(c_block_cln)):
+                ch_block_cln=c_block_cln[j].squeeze()
+                vertical_blocks_cln = np.split(ch_block_cln, vertical_blocks_num,axis = 1)
+                for k in range(len(vertical_blocks_cln)):
+                    block_ver_cln=vertical_blocks_cln[k].squeeze()
+                    hor_blocks_cln = np.split(block_ver_cln,horizontal_blocks_num,axis = 0)
+                    for m in range(len(hor_blocks_cln)):
+                        block_cln=hor_blocks_cln[m]
+                        block_cln = np.reshape(block_cln,(num,num))                        
+                        block_cln_tmp = np.log(1+np.abs(dct2(block_cln)))
+                        block_dct[i,:,:,j]=block_dct[i,:,:,j]+block_cln_tmp
+
+        block_dct=block_dct/(horizontal_blocks_num*vertical_blocks_num)
+        return block_dct
+    
+    def get_cln_dct(self,clean_imgs):
+        imgs_dct=self.img2dct(clean_imgs)
+        
     
 # FD algorithm
 T = np.array([

@@ -5,13 +5,13 @@ if [ ! -d "$saved_dir" ]; then
 fi
 log_name=$saved_dir'/terminal_thresh_'$(date +%Y%m%d_%H%M%S)$a'.log'
 
-#thresh0=(0.1 0.3 0.5 0.7 0.9)
-#thresh1=(0.1 0.3 0.5 0.7 0.9)
-#thresh2=(0.1 0.3 0.5 0.7 0.9)
-
 thresh0=(0.1 0.3 0.5 0.7 0.9)
 thresh1=(0.1 0.3 0.5 0.7 0.9)
 thresh2=(0.1 0.3 0.5 0.7 0.9)
+
+#thresh0=(0.1 0.9)
+#thresh1=(0.1 0.9)
+#thresh2=(0.1 0.9)
 
 echo  'SUMMARY:test'                       |tee $log_name
 echo  'thresh0:       '${thresh0[*]} |tee -a $log_name

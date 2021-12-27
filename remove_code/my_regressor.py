@@ -25,7 +25,7 @@ from sklearn.linear_model import LassoCV
 import pickle
 import joblib
 import logging
-from models.resnet_reg import resnet50
+from models.resnet_reg import resnet50,resnet18
 sys.path.append('../common_code')
 import general as g
 
@@ -163,7 +163,7 @@ def my_loss(pred,gt):
     factor=1+torch.abs(torch.log10(gt/10))
     mse=pred-gt
     
-    loss=torch.pow(factor,2)*torch.pow(mse, 2)
+    loss=torch.pow(factor,2)*torch.pow(mse,2)#(mse,2)
     
     return loss.mean()
     
@@ -218,8 +218,9 @@ if __name__=='__main__':
     svm_gamma=g.svm_gamma
     svm_c=g.svm_c
     
-    # model = Net()
-    model = resnet50()
+    model = Net()
+    # model = resnet18()
+    model.init_weights()
     model = torch.nn.DataParallel(model).cuda()
     optimizer = Adam(model.parameters(),lr=cnn_max_lr)
     cost = my_loss#MSELoss(reduction='mean')#CrossEntropyLoss()

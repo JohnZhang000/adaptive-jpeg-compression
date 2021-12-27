@@ -10,7 +10,7 @@ from io import BytesIO
 import cv2
 import random
 import pickle
-from my_regressor import Net
+from my_regressor import Net,resnet18
 import torch
 import sys
 sys.path.append('../common_code')
@@ -397,12 +397,10 @@ class defend_my_fd_ago:
     def defend_channel_wise(self, imgs, labels=None):
         augeds=[]
         imgs=g.rgb_to_ycbcr(imgs)
-        imgs_tmp=g.img2dct(imgs)
-        if not (self.model_mean_std is None):
-            imgs_tmp=(imgs_tmp-self.model_mean_std[...,0:3])/self.model_mean_std[...,3:6]
-        eps=self.model(torch.from_numpy(imgs_tmp.transpose(0,3,1,2)).cuda()).detach().cpu().numpy()
+        
+        eps=self.get_adaptive_eps(imgs)
         print(eps)
-        print(eps.mean())
+        print('mean:%f, median:%f'%(eps.mean(),np.median(eps)))
         for i in range(imgs.shape[0]):
             img_now=np.expand_dims(imgs[i,...],axis=0)
             eps_now=eps[i]
@@ -414,6 +412,26 @@ class defend_my_fd_ago:
         augeds=g.ycbcr_to_rgb(augeds)
         return augeds,labels 
     
+    def get_adaptive_eps(self, imgs):
+        imgs_tmp=g.img2dct(imgs)
+        if not (self.model_mean_std is None):
+            imgs_tmp=(imgs_tmp-self.model_mean_std[...,0:3])/self.model_mean_std[...,3:6]
+        imgs_tmp=imgs_tmp.transpose(0,3,1,2)   
+        
+        eps_list=[]
+        batch_size=g.cnn_batch_size
+        batch_num=int(np.ceil(imgs_tmp.shape[0]/batch_size))
+        for i in range(batch_num):
+            start_idx=batch_size*i
+            end_idx=min(batch_size*(i+1),imgs_tmp.shape[0])
+            eps_tmp=self.model(torch.from_numpy(imgs_tmp[start_idx:end_idx,...]).cuda()).detach().cpu().numpy()
+            eps_list.append(eps_tmp)
+            torch.cuda.empty_cache()
+        
+        eps_np=np.hstack(eps_list)
+        print(eps_np.shape)
+        return eps_np
+        
         
     def ycbcr_to_rgb(self,imgs):
         assert(4==len(imgs.shape))

@@ -272,6 +272,7 @@ if __name__=='__main__':
         predictions = fmodel.predict(images_in.transpose(0,3,1,2))
         predictions = np.argmax(predictions,axis=1)
         cor_adv = np.sum(predictions==labels)
+        accs.append(100*cor_adv/len(labels))
         prt_info='def_pre %s: %.1f'%(defences_names_pre[i],100*cor_adv/len(labels))
         print(prt_info)
         fprint_list.append(prt_info)

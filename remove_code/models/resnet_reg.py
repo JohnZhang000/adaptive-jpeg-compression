@@ -136,6 +136,24 @@ class ResNet(nn.Module):
         output = output.squeeze(1)
         return output
 
+    def init_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                if m.weight is not None:
+                    torch.nn.init.kaiming_normal_(m.weight.data)
+                if m.bias is not None:
+                    torch.nn.init.zeros_(m.bias.data)
+            elif isinstance(m, nn.Conv2d):
+                if m.weight is not None:
+                    torch.nn.init.kaiming_normal_(m.weight.data)
+                if m.bias is not None:
+                    torch.nn.init.zeros_(m.bias.data)
+            elif isinstance(m, nn.BatchNorm2d):
+                if m.weight is not None:
+                    torch.nn.init.constant_(m.weight.data,1.0)
+                if m.bias is not None:
+                    torch.nn.init.constant_(m.bias.data,0.0)
+                    
 def resnet18():
     """ return a ResNet 18 object
     """

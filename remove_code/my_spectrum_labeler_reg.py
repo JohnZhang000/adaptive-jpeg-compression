@@ -110,7 +110,7 @@ if __name__=='__main__':
     if len(sys.argv)!=3:
         print('Manual Mode !!!')
         model_type    = 'allconv'
-        data          = 'test'
+        data          = 'train'
         # device        = 3
     else:
         print('Terminal Mode !!!')

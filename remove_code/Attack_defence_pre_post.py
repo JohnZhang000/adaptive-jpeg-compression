@@ -29,6 +29,8 @@ from models.cifar.allconv import AllConvNet
 from third_party.ResNeXt_DenseNet.models.densenet import densenet
 from third_party.ResNeXt_DenseNet.models.resnext import resnext29
 from third_party.WideResNet_pytorch.wideresnet import WideResNet
+
+
 import json
 sys.path.append('../common_code')
 # from load_cifar_data import load_CIFAR_batch,load_CIFAR_train
@@ -130,8 +132,8 @@ if __name__=='__main__':
                                preprocessing=(mean, std))
 
     
-    pred_cln = fmodel.predict(images)
-    torch.cuda.empty_cache()
+    # pred_cln = fmodel.predict(images)
+    # torch.cuda.empty_cache()
    
     '''
     防御初始化
@@ -171,14 +173,18 @@ if __name__=='__main__':
     # defences_names_pre.append('FD_ago')
     
     table_pkl='table_dict.pkl'
+    gc_model_dir='../saved_tests/img_attack_reg/spectrum_label/allconv/model_best.pth.tar'
+    model_mean_std='../saved_tests/img_attack_reg/spectrum_label/allconv/mean_std_test.npy'
     # threshs=[0.001,0.001,0.001]
-    fd_ago_new=defend_my_fd_ago(table_pkl,threshs)
+    fd_ago_new=defend_my_fd_ago(table_pkl,gc_model_dir,[0.3,0.8,0.8],[0.0001,0.0001,0.0001],model_mean_std)
     fd_ago_new.get_cln_dct(images.transpose(0,2,3,1).copy())
     print(fd_ago_new.abs_threshs)
     # defences_pre.append(fd_ago_new.defend)
     # defences_names_pre.append('fd_ago_my')
+    # defences_pre.append(fd_ago_new.defend_channel_wise_with_eps)
+    # defences_names_pre.append('fd_ago_my')
     defences_pre.append(fd_ago_new.defend_channel_wise)
-    defences_names_pre.append('fd_ago_my')
+    defences_names_pre.append('fd_ago_my_no_eps')
     # defences_pre.append(fd_ago_new.defend_channel_wise_adaptive_table)
     # defences_names_pre.append('fd_ago_my_ada')
     
@@ -260,7 +266,7 @@ if __name__=='__main__':
         if 'fd_ago_my'==defences_names_pre[i]:
             images_in,labels_in = defences_pre[i](images_def.transpose(0,2,3,1),0*np.ones(images_def.shape[0]),labels.copy())
         elif 'fd_ago_my_ada'==defences_names_pre[i]:
-            images_in,labels_in = defences_pre[i](images_def.transpose(0,2,3,1).copy(),labels.copy())
+            images_in,labels_in = defences_pre[i](images_def.transpose(0,2,3,1).copy(),images.transpose(0,2,3,1).copy(),labels.copy())
         else:
             images_in,labels_in = defences_pre[i](images_def.transpose(0,2,3,1),labels.copy())
         predictions = fmodel.predict(images_in.transpose(0,3,1,2))
@@ -320,7 +326,7 @@ if __name__=='__main__':
                     eps_pred=attack_now.eps
                 images_in,labels_in = defences_pre[i](images_def.transpose(0,2,3,1),eps_pred*np.ones(images_def.shape[0]),labels.copy())
             elif 'fd_ago_my_ada'==defences_names_pre[i]:
-                images_in,labels_in = defences_pre[i](images_def.transpose(0,2,3,1).copy(),labels.copy())
+                images_in,labels_in = defences_pre[i](images_def.transpose(0,2,3,1).copy(),images.transpose(0,2,3,1).copy(),labels.copy())
             else:
                 images_in,labels_in = defences_pre[i](images_def.transpose(0,2,3,1),labels.copy())
             predictions = fmodel.predict(images_in.transpose(0,3,1,2))

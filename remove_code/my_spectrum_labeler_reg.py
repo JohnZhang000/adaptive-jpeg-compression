@@ -39,6 +39,7 @@ from load_cifar_data import load_CIFAR_batch,load_CIFAR_train,load_imagenet_batc
 import general as g
 import logging
 
+
 class img_spectrum_labeler:
 
     # 解释器初始化
@@ -196,7 +197,9 @@ if __name__=='__main__':
             images_batch = images[batch*i:batch*(i+1),...].transpose(0,3,1,2)
             labels_batch = labels[batch*i:batch*(i+1),...]
             attack_name=0#'FGSM_L2_IDP'
-            attack_eps=np.random.random()#np.random.randint(len(eps_L2))
+            epss=[0.001,0.1,0.5,1.0,10.0]
+            idx=np.random.randint(5)
+            attack_eps=epss[idx]#np.random.rand()#np.random.randint(len(eps_L2))
         elif 'imagenet'==dataset:
             images_batch,labels_batch=load_imagenet_batch(i,batch,data_dir,images,labels)
             attack_name=0#'FGSM_L2_IDP'
@@ -232,8 +235,21 @@ if __name__=='__main__':
     spectrums_np=np.vstack(spectrums_list)
     labels_np=np.hstack(labels_list)
     
+    mean_list=[]
+    std_list=[]
+    for i in range(spectrums_np.shape[3]):
+        mean_list.append(np.expand_dims(spectrums_np[...,i].mean(axis=0),axis=0))
+        std_list.append(np.expand_dims(spectrums_np[...,i].std(axis=0),axis=0))
+        
+    mean_np=np.vstack(mean_list)
+    std_np=np.vstack(std_list)
+    mean_std=np.vstack((mean_np,std_np)).transpose(1,2,0)
+    
+    a1=(spectrums_np-mean_std[...,0:3])/mean_std[...,3:6]
+    
     np.save(os.path.join(saved_dir_path,'spectrums_'+data+'.npy'), spectrums_np)
     np.save(os.path.join(saved_dir_path,'labels_'+data+'.npy'), labels_np)
+    np.save(os.path.join(saved_dir_path,'mean_std_'+data+'.npy'), mean_std)
     end_time=time.time()
     
     prt_info=("Time of label [%s] [%s] %f s")%(model_type,data,end_time-start_time)

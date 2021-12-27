@@ -25,6 +25,7 @@ from sklearn.linear_model import LassoCV
 import pickle
 import joblib
 import logging
+from models.resnet_reg import resnet50
 sys.path.append('../common_code')
 import general as g
 
@@ -49,6 +50,7 @@ class Net(nn.Module):
         self.fc4 = nn.Linear(10, 1)
 
     def forward(self, x):
+        # print(x.shape)
         y = self.conv1(x)
         y = self.bn1(y)
         y = self.relu1(y)
@@ -57,7 +59,8 @@ class Net(nn.Module):
         y = self.bn2(y)
         y = self.relu2(y)
         y = self.pool2(y)
-        y = y.view(y.shape[0], -1)
+        # print(y.shape)
+        y = y.contiguous().view(y.shape[0], -1)
         y = self.fc1(y)
         y = self.relu3(y)
         y = self.fc2(y)
@@ -92,15 +95,19 @@ class spectrum_dataset(Dataset):
     def __init__(self,data_dir,label_dir,mean_std=None):
         self.spectrums=np.load(data_dir).astype(np.float32).transpose(0,3,1,2)
         self.labels=np.load(label_dir).astype(np.float32)
-        self.mean_std=mean_std
+        self.mean_std=None
+        if mean_std:
+            self.mean_std=np.load(mean_std).astype(np.float32).transpose(2,0,1)
+            self.spectrums=(self.spectrums-self.mean_std[0:3,...])/self.mean_std[3:6,...]
         
     def __len__(self):
         return len(self.labels)
     
     def __getitem__(self,idx):
         spectrum=torch.from_numpy(self.spectrums[idx,:])
-        if self.mean_std:
-            spectrum = (spectrum-self.mean_std[0])/self.mean_std[1]
+        # if None!=self.mean_std.any():
+        #     mean_std=self.mean_std.transpose
+        #     spectrum = (spectrum-self.mean_std[0:3,...])/self.mean_std[3:6,...]
             
         label= self.labels[idx]
         return spectrum, label
@@ -153,10 +160,10 @@ def my_loss(pred,gt):
     # diff=(pred-gt)/gt_in
     # diff=torch.clamp_max(diff.abs(), 100)
     
-    factor=1+torch.abs(torch.log10(gt))
+    factor=1+torch.abs(torch.log10(gt/10))
     mse=pred-gt
     
-    loss=factor*torch.pow(mse, 2)
+    loss=torch.pow(factor,2)*torch.pow(mse, 2)
     
     return loss.mean()
     
@@ -194,8 +201,9 @@ if __name__=='__main__':
     cnn_epochs     = g.cnn_epochs
     cnn_batch_size = g.cnn_batch_size
     
-    train_dataset = spectrum_dataset(data_dir+'/spectrums_test.npy',data_dir+'/labels_test.npy')
-    test_dataset  = spectrum_dataset(data_dir+'/spectrums_test.npy',data_dir+'/labels_test.npy') 
+    mean_std=data_dir+'/mean_std_test.npy'
+    train_dataset = spectrum_dataset(data_dir+'/spectrums_test.npy',data_dir+'/labels_test.npy',mean_std)
+    test_dataset  = spectrum_dataset(data_dir+'/spectrums_test.npy',data_dir+'/labels_test.npy',mean_std) 
     train_loader = DataLoader(train_dataset, batch_size=cnn_batch_size,shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=cnn_batch_size)       
     logging.basicConfig(filename=os.path.join(data_dir,'log_train.txt'),
@@ -210,9 +218,11 @@ if __name__=='__main__':
     svm_gamma=g.svm_gamma
     svm_c=g.svm_c
     
-    model = Net()
+    # model = Net()
+    model = resnet50()
+    model = torch.nn.DataParallel(model).cuda()
     optimizer = Adam(model.parameters(),lr=cnn_max_lr)
-    cost = MSELoss(reduction='sum')#CrossEntropyLoss()
+    cost = my_loss#MSELoss(reduction='mean')#CrossEntropyLoss()
     epoch = cnn_epochs
     best_loss = 1000
     
@@ -220,11 +230,13 @@ if __name__=='__main__':
         model.train()
         for idx, (train_x, train_label) in enumerate(train_loader):
             # label_np = np.zeros((train_label.shape[0], 10))
+            train_x=train_x.cuda()
+            train_label=train_label.cuda()
             optimizer.zero_grad()
             predict_y = model(train_x.float())
             loss = cost(predict_y, train_label)
             if idx % 10 == 0:
-                print('[Epoch]:{}, idx: {}, loss: {}'.format(_epoch, idx, loss.sum().item()))
+                print('[Epoch]:{}, idx: {}, loss: {}'.format(_epoch, idx, loss.detach().cpu().numpy().sum().item()))
             loss.backward()
             optimizer.step()
     
@@ -232,13 +244,16 @@ if __name__=='__main__':
         sum_loss = 0
         model.eval()
         for idx, (test_x, test_label) in enumerate(test_loader):
+            test_x=test_x.cuda()
+            test_label=test_label.cuda()
+            
             predict_y = model(test_x.float()).detach()
             label_np = test_label#.numpy()
             test_loss=cost(predict_y, label_np)
-            sum_loss+=test_loss
+            sum_loss+=test_loss.detach().cpu().numpy()
             
         is_best = sum_loss<best_loss
-        ave_loss=sum_loss / len(test_loader.dataset)
+        ave_loss=sum_loss / (idx+1)
         print('[Epoch]:{}, ave_loss: {:.8f}'.format(_epoch, ave_loss))
         # torch.save(model, 'models/mnist_{:.4f}.pkl'.format(ave_loss))
         save_checkpoint({'epoch':_epoch+1,
@@ -249,8 +264,9 @@ if __name__=='__main__':
     preds=[]
     gts=[]
     for idx, (test_x, test_label) in enumerate(test_loader):
+        test_x=test_x.cuda()
         predict_y = model(test_x.float()).detach()
-        preds.append(predict_y.numpy())
+        preds.append(predict_y.detach().cpu().numpy())
         gts.append(test_label.numpy())
     
     gts_np=np.hstack(gts)

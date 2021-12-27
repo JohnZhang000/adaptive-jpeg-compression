@@ -10,6 +10,11 @@ from io import BytesIO
 import cv2
 import random
 import pickle
+from my_regressor import Net
+import torch
+import sys
+sys.path.append('../common_code')
+import general as g
 
 # This file contains the defense methods compared in the paper.
 # The FD algorithm's source code is from:
@@ -200,10 +205,19 @@ def defend_GD(img,distort_limit = 0.25):
 class defend_my_fd_ago:
 
     # 解释器初始化
-    def __init__(self,table_pkl,threshs):
+    def __init__(self,table_pkl,dir_model,threshs1,threshs2,model_mean_std=None):
         self.tabel_dict=pickle.load(open(table_pkl,'rb'))
-        self.threshs=threshs
-        self.abs_threshs=np.zeros_like(self.threshs)
+        self.threshs_eps=threshs1
+        self.threshs_spec=threshs2
+        self.abs_threshs=np.zeros_like(self.threshs_eps)
+        self.model=Net().eval()
+        self.model = torch.nn.DataParallel(self.model).cuda()
+        checkpoint = torch.load(dir_model)
+        self.model.load_state_dict(checkpoint["state_dict"],True)
+        self.model_mean_std=None
+        if model_mean_std:
+            self.model_mean_std=np.load(model_mean_std).astype(np.float32)
+        
           
     def FD_fuction(self,input_matrix,table_now):
         output = []
@@ -309,27 +323,27 @@ class defend_my_fd_ago:
         output3 = np.clip(np.float32(output3),0.0,1.0)
         return output3
     
-    def get_adaptive_table(self,imgs):
+    def get_adaptive_table(self,imgs,base_imgs):
         imgs_dct=self.img2dct(imgs)
-        # base_imgs_dct=self.img2dct(base_imgs)        
-        diff_dct=imgs_dct-self.base_imgs_dct
+        base_imgs_dct=self.img2dct(base_imgs)        
+        diff_dct=imgs_dct-base_imgs_dct#self.base_imgs_dct
         
         tables=np.ones_like(diff_dct)
         # for i in range(diff_dct.shape[0]):
         #     for j in range(diff_dct.shape[3]):
         #         block_tmp=diff_dct[i,:,:,j]
             
-        #         block_tmp[block_tmp>block_tmp.max()*self.threshs[j]]=100
-        #         block_tmp[block_tmp<block_tmp.max()*self.threshs[j]]=1
+        #         block_tmp[block_tmp>block_tmp.max()*self.threshs_spec[j]]=100
+        #         block_tmp[block_tmp<block_tmp.max()*self.threshs_spec[j]]=1
         #         tables[i,:,:,j]=block_tmp
         # tables[tables==0]=1   
         
-        threshs=self.abs_threshs
-        # threshs=np.ones_like(self.threshs)
-        # for i in range(len(threshs)):
-        #     block_tmp=base_imgs_dct[:,:,:,i]
-        #     block_tmp_mean=block_tmp.mean(axis=0)
-        #     threshs[i]=block_tmp_mean.max()*self.threshs[i]
+        # threshs=self.abs_threshs
+        threshs=np.ones_like(self.threshs_spec)
+        for i in range(len(threshs)):
+            block_tmp=base_imgs_dct[:,:,:,i]
+            block_tmp_mean=block_tmp.mean(axis=0)
+            threshs[i]=block_tmp_mean.max()*self.threshs_spec[i]
         
         for i in range(diff_dct.shape[0]):
             for j in range(diff_dct.shape[3]):
@@ -365,7 +379,7 @@ class defend_my_fd_ago:
             augeds.append(auged)
         return np.vstack(augeds),labels 
     
-    def defend_channel_wise(self, imgs,eps, labels=None):
+    def defend_channel_wise_with_eps(self, imgs,eps, labels=None):
         augeds=[]
         for i in range(imgs.shape[0]):
             img_now=np.expand_dims(imgs[i,...],0).squeeze(0)
@@ -379,6 +393,27 @@ class defend_my_fd_ago:
             auged=cv2.cvtColor(auged, cv2.COLOR_YCrCb2RGB)
             augeds.append(np.expand_dims(auged,axis=0))
         return np.vstack(augeds),labels 
+    
+    def defend_channel_wise(self, imgs, labels=None):
+        augeds=[]
+        imgs=g.rgb_to_ycbcr(imgs)
+        imgs_tmp=g.img2dct(imgs)
+        if not (self.model_mean_std is None):
+            imgs_tmp=(imgs_tmp-self.model_mean_std[...,0:3])/self.model_mean_std[...,3:6]
+        eps=self.model(torch.from_numpy(imgs_tmp.transpose(0,3,1,2)).cuda()).detach().cpu().numpy()
+        print(eps)
+        print(eps.mean())
+        for i in range(imgs.shape[0]):
+            img_now=np.expand_dims(imgs[i,...],axis=0)
+            eps_now=eps[i]
+            table_now=self.bilnear_table(eps_now)
+            table_now=self.scale_table(table_now)
+            auged=self.FD_fuction_channel_wise(img_now,table_now)
+            augeds.append(auged)
+        augeds=np.vstack(augeds)
+        augeds=g.ycbcr_to_rgb(augeds)
+        return augeds,labels 
+    
         
     def ycbcr_to_rgb(self,imgs):
         assert(4==len(imgs.shape))
@@ -421,11 +456,11 @@ class defend_my_fd_ago:
         imgs_out[...,2]=cr
         return imgs_out
     
-    def defend_channel_wise_adaptive_table(self, imgs, labels=None):
+    def defend_channel_wise_adaptive_table(self, imgs, base_imgs, labels=None):
         augeds=[]
         imgs=self.rgb_to_ycbcr(imgs)
-        # base_imgs=self.rgb_to_ycbcr(base_imgs)
-        tables=self.get_adaptive_table(imgs)
+        base_imgs=self.rgb_to_ycbcr(base_imgs)
+        tables=self.get_adaptive_table(imgs,base_imgs)
         
         for i in range(imgs.shape[0]):
             img_now=np.expand_dims(imgs[i,...],0)
@@ -473,7 +508,28 @@ class defend_my_fd_ago:
             block_tmp=imgs_dct[:,:,:,i]
             block_tmp_mean=block_tmp.mean(axis=0)
             self.base_imgs_dct[:,:,i]=block_tmp_mean
-            self.abs_threshs[i]=block_tmp_mean.max()*self.threshs[i]
+            self.abs_threshs[i]=block_tmp_mean.max()*self.threshs_spec[i]
+            
+    def bilnear_table(self,eps):
+        table=np.ones((8,8,3))
+        
+        keys=list(self.tabel_dict.keys())
+        eps=np.clip(eps, keys[0], keys[-1])
+
+        for i in range(len(keys)-1):
+            if keys[i]<=eps and keys[i+1]>=eps:
+                upper_key=keys[i+1]
+                lower_key=keys[i]
+                break
+        
+        upper_table=self.tabel_dict[upper_key]
+        lower_table=self.tabel_dict[lower_key]
+        
+        table=lower_table*(upper_key-eps)/(upper_key-lower_key)+upper_table*(eps-lower_key)/(upper_key-lower_key)
+        # table=table/2
+        return table
+        
+        
         
     
 # FD algorithm
@@ -918,13 +974,14 @@ def Cal_channel_wise_qtable(clean_imgs,adv_imgs,thresh):
     # block_cln_all_mean=np.vstack(block_cln_all).mean(axis=0).reshape([8,8])
     # block_adv_all_mean=np.vstack(block_adv_all).mean(axis=0).reshape([8,8])
     block_diff_out=np.zeros_like(block_diff_all)
-    for i in range(len(block_diff_all)):
-        block_tmp=block_diff_all[i]
+    for i in range(block_diff_all.shape[2]):
+        block_tmp=block_diff_all[:,:,i]
         block_tmp=np.abs(block_tmp)/(block_nums/c)
+        block_tmp_max=block_tmp.max()
     
-        block_tmp[block_tmp>block_tmp.max()*thresh[i]]=100
-        block_tmp[block_tmp<block_tmp.max()*thresh[i]]=1
-        block_diff_out[i,...]=block_tmp
+        block_tmp[block_tmp>block_tmp_max*thresh[i]]=100
+        block_tmp[block_tmp<block_tmp_max*thresh[i]]=1
+        block_diff_out[...,i]=block_tmp
     return block_diff_out,Q,np.vstack(block_cln_all),np.vstack(block_adv_all)
 
 def padresult(cleandata):

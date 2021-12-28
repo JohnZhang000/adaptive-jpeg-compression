@@ -110,7 +110,7 @@ if __name__=='__main__':
     if len(sys.argv)!=3:
         print('Manual Mode !!!')
         model_type    = 'allconv'
-        data          = 'train'
+        data          = 'test'
         # device        = 3
     else:
         print('Terminal Mode !!!')
@@ -199,7 +199,7 @@ if __name__=='__main__':
             attack_name=0#'FGSM_L2_IDP'
             epss=[0.001,0.1,0.5,1.0,10.0]
             idx=np.random.randint(5)
-            attack_eps=epss[idx]#np.random.rand()#np.random.randint(len(eps_L2))
+            attack_eps=1*np.random.rand()#np.random.randint(len(eps_L2))
         elif 'imagenet'==dataset:
             images_batch,labels_batch=load_imagenet_batch(i,batch,data_dir,images,labels)
             attack_name=0#'FGSM_L2_IDP'

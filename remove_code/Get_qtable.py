@@ -119,8 +119,8 @@ if __name__=='__main__':
     if len(sys.argv)!=4:
         print('Manual Mode !!!')
         thresh0  = 0.3
-        thresh1  = 0.8
-        thresh2  = 0.8
+        thresh1  = 0.3
+        thresh2  = 0.9
         # data          = 'test'
         # device        = 0
     else:

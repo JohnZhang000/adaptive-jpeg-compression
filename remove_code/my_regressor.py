@@ -48,6 +48,9 @@ class Net(nn.Module):
         self.fc3 = nn.Linear(84, 10)
         self.relu5 = nn.ReLU()
         self.fc4 = nn.Linear(10, 1)
+        self.dp1 = nn.Dropout(0.25)
+        self.dp2 = nn.Dropout(0.25)
+        self.dp3 = nn.Dropout(0.25)
 
     def forward(self, x):
         # print(x.shape)
@@ -63,10 +66,13 @@ class Net(nn.Module):
         y = y.contiguous().view(y.shape[0], -1)
         y = self.fc1(y)
         y = self.relu3(y)
+        y = self.dp1(y)
         y = self.fc2(y)
         y = self.relu4(y)
+        y = self.dp2(y)
         y = self.fc3(y)
         y = self.relu5(y)
+        y = self.dp3(y)
         y = self.fc4(y)
         # y = self.relu6(y)
         # y = self.fc5(y)
@@ -201,8 +207,8 @@ if __name__=='__main__':
     cnn_epochs     = g.cnn_epochs
     cnn_batch_size = g.cnn_batch_size
     
-    mean_std=data_dir+'/mean_std_test.npy'
-    train_dataset = spectrum_dataset(data_dir+'/spectrums_test.npy',data_dir+'/labels_test.npy',mean_std)
+    mean_std=data_dir+'/mean_std_train.npy'
+    train_dataset = spectrum_dataset(data_dir+'/spectrums_train.npy',data_dir+'/labels_train.npy',mean_std)
     test_dataset  = spectrum_dataset(data_dir+'/spectrums_test.npy',data_dir+'/labels_test.npy',mean_std) 
     train_loader = DataLoader(train_dataset, batch_size=cnn_batch_size,shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=cnn_batch_size)       
@@ -218,11 +224,11 @@ if __name__=='__main__':
     svm_gamma=g.svm_gamma
     svm_c=g.svm_c
     
-    model = Net()
-    # model = resnet18()
+    # model = Net()
+    model = resnet18()
     model.init_weights()
     model = torch.nn.DataParallel(model).cuda()
-    optimizer = Adam(model.parameters(),lr=cnn_max_lr)
+    optimizer = Adam(model.parameters(),lr=cnn_max_lr,weight_decay=1e-4)
     cost = my_loss#MSELoss(reduction='mean')#CrossEntropyLoss()
     epoch = cnn_epochs
     best_loss = 1000
@@ -243,6 +249,7 @@ if __name__=='__main__':
     
         correct = 0
         sum_loss = 0
+        
         model.eval()
         for idx, (test_x, test_label) in enumerate(test_loader):
             test_x=test_x.cuda()
@@ -264,6 +271,7 @@ if __name__=='__main__':
     
     preds=[]
     gts=[]
+    model.eval()
     for idx, (test_x, test_label) in enumerate(test_loader):
         test_x=test_x.cuda()
         predict_y = model(test_x.float()).detach()

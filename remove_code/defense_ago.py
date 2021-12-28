@@ -924,7 +924,7 @@ def Cal_channel_wise_qtable(clean_imgs,adv_imgs,thresh):
     c = clean_imgs.shape[3]
     
     Q0=np.zeros((c,num,num))
-    block_diff_all=np.zeros((num,num,c))
+    block_diff_all=np.zeros((n,num,num,c))
 
     block_cln_all=[[] for _ in range(c)]
     block_adv_all=[[] for _ in range(c)]
@@ -978,7 +978,7 @@ def Cal_channel_wise_qtable(clean_imgs,adv_imgs,thresh):
                     # block_cln_all=block_cln_all+block_cln_dct
                     # block_adv_all=block_adv_all+block_adv_dct
                     
-                    block_diff_all[...,j]=block_diff_all[...,j]+block_diff
+                    block_diff_all[i,...,j]=block_diff_all[i,...,j]+block_diff
                     xmax=np.argmax(block_diff)
                     xq=xmax//num
                     yq=xmax%num
@@ -991,15 +991,18 @@ def Cal_channel_wise_qtable(clean_imgs,adv_imgs,thresh):
     
     # block_cln_all_mean=np.vstack(block_cln_all).mean(axis=0).reshape([8,8])
     # block_adv_all_mean=np.vstack(block_adv_all).mean(axis=0).reshape([8,8])
-    block_diff_out=np.zeros_like(block_diff_all)
-    for i in range(block_diff_all.shape[2]):
-        block_tmp=block_diff_all[:,:,i]
-        block_tmp=np.abs(block_tmp)/(block_nums/c)
-        block_tmp_max=block_tmp.max()
+    block_diff_out=np.ones((num,num,c))
+    for j in range(block_diff_all.shape[-1]):
+        
+        block_cln_tmp=np.vstack(block_cln_all[j])
+        block_cln_tmp=block_cln_tmp.mean(axis=0)
+        abs_thresh=block_cln_tmp.max()*thresh[j]
+        
+        block_tmp=block_diff_all[...,j]      
     
-        block_tmp[block_tmp>block_tmp_max*thresh[i]]=100
-        block_tmp[block_tmp<block_tmp_max*thresh[i]]=1
-        block_diff_out[...,i]=block_tmp
+        block_tmp[block_tmp>abs_thresh]=100
+        block_tmp[block_tmp<abs_thresh]=1
+        block_diff_out[...,j]=block_tmp.mean(axis=0)
     return block_diff_out,Q,np.vstack(block_cln_all),np.vstack(block_adv_all)
 
 def padresult(cleandata):

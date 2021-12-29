@@ -23,12 +23,40 @@ from torchvision import datasets
 # from torchvision.datasets import mnist,CIFAR10
 from torchvision.transforms import ToTensor
 import torchvision.transforms as transforms
-from scipy.fftpack import dct
+from scipy.fftpack import dct,idct
 
 attack_names=['FGSM_L2_IDP','PGD_L2_IDP','CW_L2_IDP','Deepfool_L2_IDP','FGSM_Linf_IDP','PGD_Linf_IDP','CW_Linf_IDP']
 eps_L2=[0.1,1.0,10.0]
 eps_Linf=[0.01,0.1,1.0,10.0]
       
+class dataset_setting():
+    def __init__(self,dataset_name='cifar-10'):
+        self.dataset_dir=None
+        self.mean=None
+        self.std=None
+        self.nb_classes=None
+        self.input_shape=None
+        self.pred_batch_size=None
+        
+        if 'cifar-10'==dataset_name:
+            self.dataset_dir='/home/estar/zhangzhuang/Dataset/Cifar'
+            self.mean=np.array((0.5,0.5,0.5),dtype=np.float32)
+            self.std=np.array((0.5,0.5,0.5),dtype=np.float32)
+            self.nb_classes=10
+            self.input_shape=(3,32,32)
+            self.pred_batch_size=256
+            
+        elif 'imagenet'==dataset_name:
+            self.dataset_dir='/home/estar/zhangzhuang/Dataset/Cifar'
+            self.mean=np.array((0.5,0.5,0.5),dtype=np.float32)
+            self.std=np.array((0.5,0.5,0.5),dtype=np.float32)
+            self.nb_classes=10
+            self.input_shape=(3,32,32)
+            self.pred_batch_size=256
+            
+        else:
+            raise Exception('Wrong dataset')
+            
 # dir_cifar_img='/media/ubuntu204/F/Dataset/cifar-10'  
 dir_cifar='/home/estar/zhangzhuang/Dataset/Cifar'
 dir_feature_cifar='../models/cifar-10_class_to_idx.json'
@@ -180,18 +208,18 @@ def load_dataset(dataset,dataset_dir,dataset_type='train'):
     if 'mnist'==dataset:
         ret_datasets = datasets.mnist.MNIST(root=dataset_dir, train=('train'==dataset_type), transform=ToTensor(), download=True)
     elif 'cifar-10'==dataset:
-        normalize = transforms.Normalize(mean=np.array((0.0,0.0,0.0),dtype=np.float32),
-                                 std=np.array((1.0,1.0,1.0),dtype=np.float32))
-        ret_datasets = datasets.CIFAR10(root=dataset_dir, train=('train'==dataset_type), transform=transforms.Compose([ToTensor(), normalize,]), download=True)
+        # normalize = transforms.Normalize(mean=np.array((0.0,0.0,0.0),dtype=np.float32),
+        #                          std=np.array((1.0,1.0,1.0),dtype=np.float32))
+        ret_datasets = datasets.CIFAR10(root=dataset_dir, train=('train'==dataset_type), transform=transforms.Compose([ToTensor(),]), download=True)
     elif 'imagenet'==dataset:
-        normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                 std=[0.229, 0.224, 0.225])
+        # normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
+        #                          std=[0.229, 0.224, 0.225])
         ret_datasets = datasets.ImageFolder(dataset_dir,
                                             transforms.Compose([
                                                 transforms.RandomResizedCrop(224),
                                                 transforms.RandomHorizontalFlip(),
                                                 transforms.ToTensor(),
-                                                normalize,]))
+                                                ]))
     else:
         raise Exception('Wrong dataset')
     return ret_datasets
@@ -239,6 +267,9 @@ def rgb_to_ycbcr(imgs):
 
 def dct2 (block):
     return dct(dct(block.T, norm = 'ortho').T, norm = 'ortho')
+
+def idct2(block):
+    return idct(idct(block.T, norm = 'ortho').T, norm = 'ortho')
 
 def img2dct(clean_imgs):
     assert(4==len(clean_imgs.shape))

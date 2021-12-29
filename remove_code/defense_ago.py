@@ -399,8 +399,8 @@ class defend_my_fd_ago:
         imgs=g.rgb_to_ycbcr(imgs)
         
         eps=self.get_adaptive_eps(imgs)
-        print(eps)
-        print('mean:%f, median:%f'%(eps.mean(),np.median(eps)))
+        # print(eps)
+        # print('mean:%f, median:%f'%(eps.mean(),np.median(eps)))
         for i in range(imgs.shape[0]):
             img_now=np.expand_dims(imgs[i,...],axis=0)
             eps_now=eps[i]
@@ -429,7 +429,7 @@ class defend_my_fd_ago:
             torch.cuda.empty_cache()
         
         eps_np=np.hstack(eps_list)
-        print(eps_np.shape)
+        # print(eps_np.shape)
         return eps_np
         
         
@@ -1024,7 +1024,7 @@ def defend_FD(data):
     paddata = padresult(data)
     defendresult = FD_fuction(paddata)
     resultdata = cropresult(defendresult)
-    resultdata = np.flip(resultdata,2)
+    # resultdata = np.flip(resultdata,2)
     return resultdata
 
 # Feature distillation for single imput

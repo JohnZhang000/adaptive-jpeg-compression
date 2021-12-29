@@ -225,7 +225,7 @@ if __name__=='__main__':
     svm_c=g.svm_c
     
     # model = Net()
-    model = resnet18()
+    model = resnet50()
     model.init_weights()
     model = torch.nn.DataParallel(model).cuda()
     optimizer = Adam(model.parameters(),lr=cnn_max_lr,weight_decay=1e-4)

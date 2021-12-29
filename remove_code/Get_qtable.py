@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 import pickle
 import cv2
 # import torch.nn.functional as F
-
+from torch.utils.data import DataLoader
 # from art.attacks.evasion import FastGradientMethod,DeepFool
 # from art.attacks.evasion import CarliniL2Method,CarliniLInfMethod
 # from art.attacks.evasion import ProjectedGradientDescent
@@ -56,34 +56,38 @@ def get_shapleys_batch_adv(attack, model, dataloader, num_samples, device):
         t.set_description("Get attacked samples {0:3d}".format(num_samples_now))
         data, label = dataiter.next()
         
-        label_now=label.detach().cpu().numpy()#.reshape(-1,1)
+        # label_now=label.detach().cpu().numpy()#.reshape(-1,1)
         
-        # skip not pred true
-        data = data.detach().numpy()
-        pred = attack.estimator.predict(data)
-        pred_class=np.argmax(pred,axis=1)
-        correct_pred=(pred_class==label_now)
-        if 0==sum(correct_pred):
-            continue
+        # # skip not pred true
+        # data = data.detach().numpy()
+        # pred = attack.estimator.predict(data)
+        # pred_class=np.argmax(pred,axis=1)
+        # correct_pred=(pred_class==label_now)
+        # if 0==sum(correct_pred):
+        #     continue
         
-        if 2==len(correct_pred.shape):
-            correct_pred=correct_pred.squeeze(1)
-        x=data[correct_pred,...]
-        if 3==len(x.shape):
-            x=x.unsqueeze(1)
-        y=label_now[correct_pred,...]
-        img_adv = attack.generate(x)
-        img_adv_tc = img_adv
-        pred = attack.estimator.predict(img_adv_tc)
-        pred_class=np.argmax(pred,axis=1)
-        adv_pred=(pred_class!=y)
-        if 0==sum(adv_pred):
-            continue
+        # if 2==len(correct_pred.shape):
+        #     correct_pred=correct_pred.squeeze(1)
+        # x=data[correct_pred,...]
+        # if 3==len(x.shape):
+        #     x=x.unsqueeze(1)
+        # y=label_now[correct_pred,...]
+        # img_adv = attack.generate(x)
+        # img_adv_tc = img_adv
+        # pred = attack.estimator.predict(img_adv_tc)
+        # pred_class=np.argmax(pred,axis=1)
+        # adv_pred=(pred_class!=y)
+        # if 0==sum(adv_pred):
+        #     continue
         
-        if 2==len(adv_pred.shape):
-            adv_pred=adv_pred.squeeze(1)
-        save_cln=x[adv_pred,...]
-        save_adv=img_adv[adv_pred,...]
+        # if 2==len(adv_pred.shape):
+        #     adv_pred=adv_pred.squeeze(1)
+        # save_cln=x[adv_pred,...]
+        # save_adv=img_adv[adv_pred,...]
+        
+        save_cln = data.detach().numpy()
+        save_adv = attack.generate(save_cln)
+        
         images.append(save_cln)
         images_adv.append(save_adv)
         
@@ -147,40 +151,20 @@ if __name__=='__main__':
     model,dataset=g.select_model(model_vanilla_type, dir_model)
     model.eval()
     
-    if 'cifar-10'==dataset:
-        mean   = g.mean_cifar
-        std    = g.std_cifar
-        nb_classes = g.nb_classes_cifar
-        input_shape=g.input_shape_cifar
-        with open(g.dir_feature_cifar) as f:
-            features=json.load(f)
-        fft_level=g.levels_all_cifar
-        dir_img=os.path.join(g.dir_cifar,'val')
-        # img_num=g.shap_batch_cifar
-    elif 'imagenet'==dataset:
-        mean   = g.mean_imagenet
-        std    = g.std_imagenet
-        nb_classes = g.nb_classes_imagenet
-        input_shape=g.input_shape_imagenet
-        with open(g.dir_feature_imagenet) as f:
-            features=json.load(f)
-        fft_level=g.levels_all_imagenet
-        dir_img=os.path.join(g.dir_imagenet,'val')
-        # img_num=g.shap_batch_imagenet
-    else:
-        raise Exception('Wrong dataset type: {} !!!'.format(dataset))
-    
-    fmodel = PyTorchClassifier(model = model,nb_classes=nb_classes,clip_values=(0,1),
-                               input_shape=input_shape,loss = nn.CrossEntropyLoss(),
-                               preprocessing=(mean, std))
-
-    
     '''
     加载图像
     '''
-    g.setup_seed(0)
-    datasets=g.load_dataset(dataset,g.dir_cifar)
-    dataloader = torch.utils.data.DataLoader(datasets, batch_size=10, shuffle=False)
+    if 'imagenet' in model_vanilla_type:
+        dataset_name='imagenet'
+    else:
+        dataset_name='cifar-10'
+    data_setting=g.dataset_setting(dataset_name)
+    dataset=g.load_dataset(dataset_name,data_setting.dataset_dir,'val')
+    dataloader = DataLoader(dataset, batch_size=data_setting.pred_batch_size, drop_last=False)   
+    
+    fmodel = PyTorchClassifier(model = model,nb_classes=data_setting.nb_classes,clip_values=(0,1),
+                               input_shape=data_setting.input_shape,loss = nn.CrossEntropyLoss(),
+                               preprocessing=(data_setting.mean, data_setting.std))
     
     '''
     攻击初始化
@@ -195,8 +179,8 @@ if __name__=='__main__':
         
         clean_imgs=np.transpose(clean_imgs.copy(),(0,2,3,1))*255
         adv_imgs=np.transpose(adv_imgs.copy(),(0,2,3,1))*255
-        clean_imgs_ycc=rgb2ycbcr(clean_imgs)
-        adv_imgs_ycc=rgb2ycbcr(adv_imgs)
+        clean_imgs_ycc=g.rgb_to_ycbcr(clean_imgs)
+        adv_imgs_ycc=g.rgb_to_ycbcr(adv_imgs)
         
         np.set_printoptions(suppress=True)
         a_qtable,Q,clns,advs=Cal_channel_wise_qtable(clean_imgs_ycc, adv_imgs_ycc,threshs)
@@ -204,40 +188,4 @@ if __name__=='__main__':
         Q=np.round(Q)
         table_dict[eps_now]=a_qtable
     pickle.dump(table_dict, open('table_dict.pkl','wb'))
-    
-    # print(a_qtable)
-    # print(' ')
-    # print(Q)
-    
-    # adv_show=adv_imgs[0,...]
-    # cln_show=clean_imgs[0,...]
-    
-    # # cv2.namedWindow('show')
-    # a=adv_show/255
-    # a=cv2.cvtColor(a, cv2.COLOR_RGB2BGR)
-    # cv2.imshow('show', a)
-    # cv2.waitKey(0)
-    
-    # plt.figure()
-    # plt.imshow(adv_show)
-    # plt.figure()
-    # plt.imshow(cln_show)
-    
-    # plt.figure()
-    # plt.imshow((adv_show-cln_show)*50+0.5)
-    
-    # fc,pc=volcano_mine(np.abs(clns),np.abs(advs))
-    # idx_green=(fc>=np.log2(1.2))&(pc>(-np.log10(0.05)))
-    # idx_red=(fc<=-np.log2(1.2))&(pc>(-np.log10(0.05)))
-    # mine_table=np.zeros([64])
-    # mine_table[pc>(-np.log10(0.05))]=1
-    # # print(' ')
-    # # print(mine_table.reshape([8,8]))
-    
-    # a=pc.reshape([8,8])
-    # a=a/a.max()*80+20
-    # a=np.round(a)
-    # print(' ')
-    # print(a)
-    
-    
+       

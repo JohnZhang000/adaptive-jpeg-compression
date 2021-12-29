@@ -96,6 +96,8 @@ class ResNet(nn.Module):
         self.conv5_x = self._make_layer(block, 512, num_block[3], 2)
         self.avg_pool = nn.AdaptiveAvgPool2d((1, 1))
         self.fc = nn.Linear(512 * block.expansion, num_classes)
+        self.dp1 = nn.Dropout(0.25)
+        self.dp2 = nn.Dropout(0.25)
         self.fc_reg = nn.Linear(num_classes, 1)
 
     def _make_layer(self, block, out_channels, num_blocks, stride):
@@ -132,6 +134,7 @@ class ResNet(nn.Module):
         output = self.avg_pool(output)
         output = output.view(output.size(0), -1)
         output = self.fc(output)
+        output = self.dp1(output)
         output = self.fc_reg(output)
         output = output.squeeze(1)
         return output

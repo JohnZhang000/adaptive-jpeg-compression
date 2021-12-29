@@ -24,12 +24,13 @@ from scipy.special import softmax
 from defense import defend_webpf_wrap,defend_webpf_my_wrap,defend_rdg_wrap,defend_fd_wrap,defend_bdr_wrap,defend_shield_wrap
 from defense import defend_my_webpf
 from defense_ago import defend_FD_ago_warp,defend_my_fd_ago
+from adaptivce_defense import adaptive_defender
 
 from models.cifar.allconv import AllConvNet
 from third_party.ResNeXt_DenseNet.models.densenet import densenet
 from third_party.ResNeXt_DenseNet.models.resnext import resnext29
 from third_party.WideResNet_pytorch.wideresnet import WideResNet
-
+from torch.utils.data import DataLoader
 
 import json
 sys.path.append('../common_code')
@@ -37,10 +38,57 @@ sys.path.append('../common_code')
 import general as g
 from load_cifar_data import load_CIFAR_batch,load_CIFAR_train,load_imagenet_batch,load_imagenet_filenames
 import pickle
+from tqdm import tqdm
+import logging
 
 def append_attack(attacks,attack,model,epss):
     for i in range(len(epss)):
         attacks.append(attack(estimator=model,eps=epss[i]))   
+        
+        
+def get_acc(fmodel,images,labels):
+    predictions = fmodel.predict(images)
+    predictions = np.argmax(predictions,axis=1)
+    cors = np.sum(predictions==labels)
+    return cors
+
+def get_defended_acc(fmodel,dataloader,defenders):
+    cors=np.zeros(defenders)
+    for idx, (images, labels) in enumerate(dataloader):
+        for idx_def,defender in enumerate(defenders):
+            images_def,labels_def = defender(images.transpose(0,2,3,1).copy(),labels.copy())
+            predictions = fmodel.predict(images_def)
+            predictions = np.argmax(predictions,axis=1)
+            cors[idx_def] += np.sum(predictions==labels)
+    return cors
+
+def get_defended_attacked_acc(fmodel,dataloader,attackers,defenders,defender_names):
+    cors=np.zeros((len(attackers)+1,len(defenders)+1))
+    for i, (images, labels) in enumerate(tqdm(dataloader)):
+        images=images.numpy()
+        labels=labels.numpy()
+        for j in range(len(attackers)+1):
+            images_att=images.copy()
+            eps=0
+            if j>0:
+                try:
+                    eps=attackers[j-1].eps
+                except:
+                    eps=0
+                images_att  = attackers[j-1].generate(x=images.copy())
+            for k in range(len(defenders)+1):
+                    images_def = images_att.copy()
+                    if k>0:
+                        if 'ADAD-flip'==defender_names[k-1]:
+                            images_def,_ = defenders[k-1](images_att.transpose(0,2,3,1).copy(),labels.copy(),None,0)
+                        elif 'ADAD+eps-flip'==defender_names[k-1]:
+                            images_def,_ = defenders[k-1](images_att.transpose(0,2,3,1).copy(),labels.copy(),eps*np.ones(images_att.shape[0]),0)
+                        else:
+                            images_def,_ = defenders[k-1](images_att.transpose(0,2,3,1).copy(),labels.copy())
+                        images_def=images_def.transpose(0,3,1,2)
+                    cors[j,k] += get_acc(fmodel,images_def,labels)
+    cors=cors/len(dataloader.dataset)
+    return cors
 
 if __name__=='__main__':    
     '''
@@ -64,38 +112,36 @@ if __name__=='__main__':
     if not os.path.exists(saved_dir):
         os.makedirs(saved_dir)
     
+    logger=logging.getLogger(name='r')
+    logger.setLevel(logging.FATAL)
+    formatter=logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s -%(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S')
+    
+    fh=logging.FileHandler(os.path.join(saved_dir,'acc_log.txt'))
+    fh.setLevel(logging.FATAL)
+    fh.setFormatter(formatter)
+    
+    ch=logging.StreamHandler()
+    ch.setLevel(logging.FATAL)
+    ch.setFormatter(formatter)
+    
+    logger.addHandler(ch)
+    logger.addHandler(fh)
+    
+    logger.fatal(('\n----------label record-----------'))
+    
     '''
     加载cifar-10图像
     '''
     g.setup_seed(0)
-    # dir_cifar     = g.dir_cifar
-    # images,labels = load_CIFAR_batch(os.path.join(dir_cifar,'test_batch'))
     if 'imagenet' in model_vanilla_type:
-        dataset='imagenet'
+        dataset_name='imagenet'
     else:
-        dataset='cifar-10'
-    if 'cifar-10'==dataset:
-        dir_cifar     = g.dir_cifar
-        images,labels = load_CIFAR_batch(os.path.join(dir_cifar,'cifar-10-batches-py/test_batch'))
-        images=images.transpose(0,3,1,2)
-    elif 'imagenet'==dataset:
-        with open(g.dir_feature_imagenet) as f:
-            features=json.load(f)
-        data_dir=os.path.join(g.dir_imagenet,'val')
-        images_names,labels=load_imagenet_filenames(data_dir,features)
-        
-        batch_size=g.pred_batch
-        batch_num       = int(len(labels)/batch_size) 
-        images_list=[]
-        label_list=[]
-        for i in range(batch_num):
-            start_idx=batch_size*i
-            end_idx=min(batch_size*(i+1),len(labels))
-            images_tmp,labels_tmp=load_imagenet_batch(i,batch_size,data_dir,images_names,labels)
-            images_list.append(images_tmp)
-            label_list.append(labels_tmp)
-        images=np.vstack(images_list)
-        labels=np.hstack(label_list)
+        dataset_name='cifar-10'
+    data_setting=g.dataset_setting(dataset_name)
+    dataset=g.load_dataset(dataset_name,data_setting.dataset_dir,'val')
+    dataloader = DataLoader(dataset, batch_size=data_setting.pred_batch_size, drop_last=False)    
 
     '''
     加载模型
@@ -104,36 +150,9 @@ if __name__=='__main__':
     model,_=g.select_model(model_vanilla_type, dir_model)
     model.eval()
     
-    if 'cifar-10'==dataset:
-        mean   = g.mean_cifar
-        std    = g.std_cifar
-        nb_classes = g.nb_classes_cifar
-        input_shape=g.input_shape_cifar
-        with open(g.dir_feature_cifar) as f:
-            features=json.load(f)
-        fft_level=g.levels_all_cifar
-        dir_img=os.path.join(g.dir_cifar,'val')
-        img_num=g.shap_batch_cifar
-    elif 'imagenet'==dataset:
-        mean   = g.mean_imagenet
-        std    = g.std_imagenet
-        nb_classes = g.nb_classes_imagenet
-        input_shape=g.input_shape_imagenet
-        with open(g.dir_feature_imagenet) as f:
-            features=json.load(f)
-        fft_level=g.levels_all_imagenet
-        dir_img=os.path.join(g.dir_imagenet,'val')
-        img_num=g.shap_batch_imagenet
-    else:
-        raise Exception('Wrong dataset type: {} !!!'.format(dataset))
-    
-    fmodel = PyTorchClassifier(model = model,nb_classes=nb_classes,clip_values=(0,1),
-                               input_shape=input_shape,loss = nn.CrossEntropyLoss(),
-                               preprocessing=(mean, std))
-
-    
-    # pred_cln = fmodel.predict(images)
-    # torch.cuda.empty_cache()
+    fmodel = PyTorchClassifier(model = model,nb_classes=data_setting.nb_classes,clip_values=(0,1),
+                               input_shape=data_setting.input_shape,loss = nn.CrossEntropyLoss(),
+                               preprocessing=(data_setting.mean, data_setting.std))
    
     '''
     防御初始化
@@ -143,30 +162,16 @@ if __name__=='__main__':
     defences_names_pre=[]
     # defences_pre.append(JpegCompression(clip_values=(0,1),quality=25,channels_first=False))
     # defences_names_pre.append('JPEG')
-    #defences_pre.append(FeatureSqueezing(clip_values=(0,1),bit_depth=32))
-    #defences_names_pre.append('FeaS')
     # defences_pre.append(GaussianAugmentation(sigma=0.01,augmentation=False))
     # defences_names_pre.append('GauA')
-    # defences_pre.append(LabelSmoothing(apply_predict=True))
-    # defences_names_pre.append('LabS')
-    # defences_pre.append(Resample(sr_original=16000,sr_new=8000,channels_first=False))
-    # defences_names_pre.append('Resa')
     # defences_pre.append(SpatialSmoothing())
-    # defences_names_pre.append('SpaS')
-    #defences_pre.append(ThermometerEncoding(clip_values=(0,1),num_space=1))
-    #defences_names_pre.append('TheE')
-    #defences_pre.append(TotalVarMin())
-    #defences_names_pre.append('ToVM')
-    # defences_pre.append(defend_webpf_my_wrap)
-    # defences_names_pre.append('webpf_my')
-    defences_pre.append(defend_webpf_wrap)
-    defences_names_pre.append('webpf')
+    # defences_names_pre.append('BDR')
+    # defences_pre.append(defend_webpf_wrap)
+    # defences_names_pre.append('webpf')
     # defences_pre.append(defend_rdg_wrap)
     # defences_names_pre.append('rdg')
     # defences_pre.append(defend_fd_wrap)
     # defences_names_pre.append('fd')
-    # defences_pre.append(defend_bdr_wrap)
-    # defences_names_pre.append('bdr')
     # defences_pre.append(defend_shield_wrap)
     # defences_names_pre.append('shield')
     # defences_pre.append(defend_FD_ago_warp)
@@ -176,40 +181,25 @@ if __name__=='__main__':
     gc_model_dir='../saved_tests/img_attack_reg/spectrum_label/allconv/model_best.pth.tar'
     model_mean_std='../saved_tests/img_attack_reg/spectrum_label/allconv/mean_std_train.npy'
     # threshs=[0.001,0.001,0.001]
-    fd_ago_new=defend_my_fd_ago(table_pkl,gc_model_dir,[0.3,0.8,0.8],[0.0001,0.0001,0.0001],model_mean_std)
-    fd_ago_new.get_cln_dct(images.transpose(0,2,3,1).copy())
-    print(fd_ago_new.abs_threshs)
+    # fd_ago_new=defend_my_fd_ago(table_pkl,gc_model_dir,[0.3,0.8,0.8],[0.0001,0.0001,0.0001],model_mean_std)
+    # fd_ago_new.get_cln_dct(images.transpose(0,2,3,1).copy())
+    # print(fd_ago_new.abs_threshs)
     # defences_pre.append(fd_ago_new.defend)
     # defences_names_pre.append('fd_ago_my')
-    defences_pre.append(fd_ago_new.defend_channel_wise_with_eps)
-    defences_names_pre.append('fd_ago_my')
-    defences_pre.append(fd_ago_new.defend_channel_wise)
-    defences_names_pre.append('fd_ago_my_no_eps')
+    # defences_pre.append(fd_ago_new.defend_channel_wise_with_eps)
+    # defences_names_pre.append('fd_ago_my')
+    # defences_pre.append(fd_ago_new.defend_channel_wise)
+    # defences_names_pre.append('fd_ago_my_no_eps')
     # defences_pre.append(fd_ago_new.defend_channel_wise_adaptive_table)
     # defences_names_pre.append('fd_ago_my_ada')
+    adaptive_defender=adaptive_defender(table_pkl,gc_model_dir,model_mean_std)
+    defences_pre.append(adaptive_defender.defend)
+    defences_names_pre.append('ADAD')
+    defences_pre.append(adaptive_defender.defend)
+    defences_names_pre.append('ADAD-flip')
+    defences_pre.append(adaptive_defender.defend)
+    defences_names_pre.append('ADAD+eps-flip')
     
-    
-    # if Q<50:
-    #     S=5000/Q
-    # else:
-    #     S=200-2*Q
-    # end
-        
-    # Ts=floor((S*Tb+50)/100)
-    # Ts(Ts==0)=1
-    
-    defences_after=[]
-    defences_names_aft=[]
-#    defences_after.append(ClassLabels())
-#    defences_names_aft.append('ClsL')    
-#    defences_after.append(GaussianNoise())
-#    defences_names_aft.append('GauN')    
-#    defences_after.append(HighConfidence())
-#    defences_names_aft.append('HigC')    
-#    defences_after.append(ReverseSigmoid())
-#    defences_names_aft.append('RevS')
-#    defences_after.append(Rounded())
-#    defences_names_aft.append('Roud')
     
     '''
     攻击初始化
@@ -219,129 +209,27 @@ if __name__=='__main__':
     eps_L2=[0.1,0.5,1.0,10.0]
     eps_Linf=[0.005,0.01,0.1,1.0,10.0]
     
-    # for i in range(len(eps_L2)):
-    #       attacks.append(FastGradientMethod(estimator=fmodel,eps=eps_L2[i],norm=2,eps_step=eps_L2[i]))
-    #       attack_names.append('FGSM_L2_'+str(eps_L2[i]))    
     for i in range(len(eps_L2)):
-          attacks.append(ProjectedGradientDescent(estimator=fmodel,eps=eps_L2[i],norm=2,batch_size=512,verbose=False))
-          attack_names.append('PGD_L2_'+str(eps_L2[i]))    
+          attacks.append(FastGradientMethod(estimator=fmodel,eps=eps_L2[i],norm=2,eps_step=eps_L2[i]))
+          attack_names.append('FGSM_L2_'+str(eps_L2[i]))    
+    # for i in range(len(eps_L2)):
+    #       attacks.append(ProjectedGradientDescent(estimator=fmodel,eps=eps_L2[i],norm=2,batch_size=512,verbose=False))
+    #       attack_names.append('PGD_L2_'+str(eps_L2[i]))    
     # attacks.append(DeepFool(classifier=fmodel,batch_size=512,verbose=False))
     # attack_names.append('DeepFool_L2')    
-    attacks.append(CarliniL2Method(classifier=fmodel,batch_size=512,verbose=False))
-    attack_names.append('CW_L2')
-    
-    
-    # for i in range(len(eps_Linf)):
-    #     attacks.append(FastGradientMethod(estimator=fmodel,eps=eps_Linf[i],norm=np.inf,eps_step=eps_Linf[i]))
-    #     attack_names.append('FGSM_Linf_'+str(eps_Linf[i]))    
-    # for i in range(len(eps_Linf)):
-    #     attacks.append(ProjectedGradientDescent(estimator=fmodel,eps=eps_Linf[i],norm=np.inf,batch_size=512,verbose=False))
-    #     attack_names.append('PGD_Linf_'+str(eps_Linf[i]))     
-    # for i in range(len(eps_Linf)):
-    #     attacks.append(CarliniLInfMethod(classifier=fmodel,batch_size=512,eps=eps_Linf[i],verbose=False))
-    #     attack_names.append('CW_Linf_'+str(eps_Linf[i]))   
+    # attacks.append(CarliniL2Method(classifier=fmodel,batch_size=512,verbose=False))
+    # attack_names.append('CW_L2')
         
 
     '''
-    读取数据
+    计算防御效果
     '''            
     # 标为原始样本
-    accs=[]
-    fprint_list=[]
-    prt_info='\n Clean'
-    print(prt_info)
-    fprint_list.append(prt_info)
-    
-            
-    images_adv=images.copy()
-    predictions = fmodel.predict(images_adv)
-    predictions = np.argmax(predictions,axis=1)
-    cor_adv = np.sum(predictions==labels)
-    prt_info='%s: %.1f'%('van',100*cor_adv/len(labels))
-    print(prt_info)
-    fprint_list.append(prt_info)
-    
-    for i in range(len(defences_pre)):
-        images_def=images_adv.copy()
-        if 'fd_ago_my'==defences_names_pre[i]:
-            images_in,labels_in = defences_pre[i](images_def.transpose(0,2,3,1),0*np.ones(images_def.shape[0]),labels.copy())
-        elif 'fd_ago_my_ada'==defences_names_pre[i]:
-            images_in,labels_in = defences_pre[i](images_def.transpose(0,2,3,1).copy(),images.transpose(0,2,3,1).copy(),labels.copy())
-        else:
-            images_in,labels_in = defences_pre[i](images_def.transpose(0,2,3,1),labels.copy())
-        predictions = fmodel.predict(images_in.transpose(0,3,1,2))
-        predictions = np.argmax(predictions,axis=1)
-        cor_adv = np.sum(predictions==labels)
-        accs.append(100*cor_adv/len(labels))
-        prt_info='def_pre %s: %.1f'%(defences_names_pre[i],100*cor_adv/len(labels))
-        print(prt_info)
-        fprint_list.append(prt_info)
-        torch.cuda.empty_cache()
-        del images_def
-
+ 
+    accs=get_defended_attacked_acc(fmodel,dataloader,attacks,defences_pre,defences_names_pre)
+    np.save(os.path.join(saved_dir,'acc.npy'),accs)
+    logger.fatal(attack_names)
+    logger.fatal(defences_names_pre)
+    logger.fatal(accs)
+    logger.fatal(accs.mean(axis=0))
    
-    file_log=os.path.join(saved_dir,'result_pre_post_log.txt')
-    f=open(file_log,'w')
-    f.write('prepost defense result\n')
-    for j in range(len(attacks)):
-        attack_now=attacks[j]
-        prt_info='\n%s'%attack_names[j]
-        print(prt_info)
-        f=open(file_log,'a')
-        f.write(prt_info+'\n')
-        f.close()
-        fprint_list.append(prt_info)
-        
-        images_now=images
-        labels_now=labels    
-        images_adv_list=[]  
-        predictions_list=[]  
-        batch_num       = int(len(labels_now)/g.label_batch) 
-        images_adv_list=[]
-        for i_attack in range(batch_num):
-            start_idx=g.label_batch*i_attack
-            end_idx=min(g.label_batch*(i_attack+1),len(labels_now))
-            images_adv_tmp  = attack_now.generate(x=images_now[start_idx:end_idx,...])
-            predictions_tmp = fmodel.predict(images_adv_tmp)
-            predictions_tmp = np.argmax(predictions_tmp,axis=1)
-            images_adv_list.append(images_adv_tmp)
-            predictions_list.append(predictions_tmp)
-            torch.cuda.empty_cache()
-        
-        images_adv  = np.vstack(images_adv_list)
-        predictions = np.hstack(predictions_list)
-        cor_adv = np.sum(predictions==labels_now)
-        prt_info='%s: %.1f'%('no_aug',100*cor_adv/len(labels_now))
-        print(prt_info)
-        f=open(file_log,'a')
-        f.write(prt_info+'\n')
-        f.close()
-        fprint_list.append(prt_info)
-        
-        for i in range(len(defences_pre)):
-            images_def=images_adv.copy()
-            if 'fd_ago_my'==defences_names_pre[i]:
-                if 'Deepfool' in attack_names[j] or 'CW' in attack_names[j]:
-                    eps_pred=0.1
-                else:
-                    eps_pred=attack_now.eps
-                images_in,labels_in = defences_pre[i](images_def.transpose(0,2,3,1),eps_pred*np.ones(images_def.shape[0]),labels.copy())
-            elif 'fd_ago_my_ada'==defences_names_pre[i]:
-                images_in,labels_in = defences_pre[i](images_def.transpose(0,2,3,1).copy(),images.transpose(0,2,3,1).copy(),labels.copy())
-            else:
-                images_in,labels_in = defences_pre[i](images_def.transpose(0,2,3,1),labels.copy())
-            predictions = fmodel.predict(images_in.transpose(0,3,1,2))
-            predictions = np.argmax(predictions,axis=1)
-            cor_adv = np.sum(predictions==labels_now)
-            prt_info='def_pre %s: %.1f'%(defences_names_pre[i],100*cor_adv/len(labels_now))
-            accs.append(100*cor_adv/len(labels_now))
-            print(prt_info)
-            f=open(file_log,'a')
-            f.write(prt_info+'\n')
-            f.close()
-            fprint_list.append(prt_info)
-            torch.cuda.empty_cache()
-            del images_def
-    print('\n[Acc mean]:%.3f'%np.vstack(accs).mean())
-        
-    

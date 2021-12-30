@@ -44,7 +44,7 @@ class dataset_setting():
             self.std=np.array((0.5,0.5,0.5),dtype=np.float32)
             self.nb_classes=10
             self.input_shape=(3,32,32)
-            self.pred_batch_size=256
+            self.pred_batch_size=256*4
             
         elif 'imagenet'==dataset_name:
             self.dataset_dir='/home/estar/zhangzhuang/Dataset/Cifar'

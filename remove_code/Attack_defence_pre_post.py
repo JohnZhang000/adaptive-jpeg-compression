@@ -177,7 +177,7 @@ if __name__=='__main__':
     # defences_pre.append(defend_FD_ago_warp)
     # defences_names_pre.append('FD_ago')
     
-    table_pkl='table_dict.pkl'
+    table_pkl=os.path.join(saved_dir,'table_dict.pkl')
     gc_model_dir='../saved_tests/img_attack_reg/spectrum_label/allconv/model_best.pth.tar'
     model_mean_std='../saved_tests/img_attack_reg/spectrum_label/allconv/mean_std_train.npy'
     # threshs=[0.001,0.001,0.001]

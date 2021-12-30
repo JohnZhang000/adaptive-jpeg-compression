@@ -5,7 +5,7 @@ Created on Mon Dec  6 10:00:21 2021
 
 @author: ubuntu204
 """
-from defense_ago import Cal_qtable,Cal_channel_wise_qtable
+from defense_ago import Cal_channel_wise_qtable
 from tqdm import tqdm
 
 import numpy as np
@@ -13,8 +13,8 @@ import torch
 import os 
 import sys
 import torch.nn as nn
-from my_data_mining import volcano_mine
-import matplotlib.pyplot as plt
+# from my_data_mining import volcano_mine
+# import matplotlib.pyplot as plt
 import pickle
 import cv2
 # import torch.nn.functional as F
@@ -35,7 +35,7 @@ from art.estimators.classification import PyTorchClassifier
 # from third_party.ResNeXt_DenseNet.models.densenet import densenet
 # from third_party.ResNeXt_DenseNet.models.resnext import resnext29
 # from third_party.WideResNet_pytorch.wideresnet import WideResNet
-import json
+# import json
 sys.path.append('../common_code')
 # from load_cifar_data import load_CIFAR_batch,load_CIFAR_train
 import general as g
@@ -122,9 +122,9 @@ if __name__=='__main__':
     # 配置解释器参数
     if len(sys.argv)!=4:
         print('Manual Mode !!!')
-        thresh0  = 0.3
-        thresh1  = 0.3
-        thresh2  = 0.9
+        thresh0  = 0.9
+        thresh1  = 0.01
+        thresh2  = 0.01
         # data          = 'test'
         # device        = 0
     else:
@@ -187,5 +187,5 @@ if __name__=='__main__':
         a_qtable=np.round(a_qtable)
         Q=np.round(Q)
         table_dict[eps_now]=a_qtable
-    pickle.dump(table_dict, open('table_dict.pkl','wb'))
+    pickle.dump(table_dict, open(os.path.join(saved_dir,'table_dict.pkl'),'wb'))
        

@@ -24,6 +24,7 @@ from torchvision import datasets
 from torchvision.transforms import ToTensor
 import torchvision.transforms as transforms
 from scipy.fftpack import dct,idct
+import socket
 
 attack_names=['FGSM_L2_IDP','PGD_L2_IDP','CW_L2_IDP','Deepfool_L2_IDP','FGSM_Linf_IDP','PGD_Linf_IDP','CW_Linf_IDP']
 eps_L2=[0.1,1.0,10.0]
@@ -37,26 +38,63 @@ class dataset_setting():
         self.nb_classes=None
         self.input_shape=None
         self.pred_batch_size=None
+        self.label_batch_size=None
+        self.hyperopt_attacker_name=None
+        self.hyperopt_img_num=None
+        self.hyperopt_max_evals=None
+        self.hyperopt_resolution=None
+        self.device=socket.gethostname()
+        self.cnn_max_lr     = None
+        self.cnn_epochs     = None
+        self.cnn_batch_size = None#*16*5
         
         if 'cifar-10'==dataset_name:
-            self.dataset_dir='/home/estar/zhangzhuang/Dataset/Cifar'
-            self.mean=np.array((0.5,0.5,0.5),dtype=np.float32)
-            self.std=np.array((0.5,0.5,0.5),dtype=np.float32)
-            self.nb_classes=10
-            self.input_shape=(3,32,32)
-            self.pred_batch_size=256*4
-            
-        elif 'imagenet'==dataset_name:
-            self.dataset_dir='/home/estar/zhangzhuang/Dataset/Cifar'
+            if 'estar-403'==self.device:
+                self.dataset_dir='/home/estar/zhangzhuang/Dataset/Cifar'
+            elif 'Jet'==self.device:
+                self.dataset_dir='/home/zhangzhuang/Datasets/Cifar-10'
+            else:
+                raise Exception('Wrong device')
             self.mean=np.array((0.5,0.5,0.5),dtype=np.float32)
             self.std=np.array((0.5,0.5,0.5),dtype=np.float32)
             self.nb_classes=10
             self.input_shape=(3,32,32)
             self.pred_batch_size=256
+            self.label_batch_size=5
+            self.hyperopt_attacker_name='FGSM_L2_IDP'
+            self.hyperopt_img_num=1000
+            self.hyperopt_max_evals=100
+            self.hyperopt_resolution=0.01
+            self.cnn_max_lr     = 3e-4
+            self.cnn_epochs     = 300
+            self.cnn_batch_size = 256#*16*5
+            
+            
+            
+        elif 'imagenet'==dataset_name:
+            if 'estar-403'==self.device:
+                self.dataset_dir='/home/estar/Datasets/ILSVRC2012-2'
+            elif 'Jet'==self.device:
+                self.dataset_dir='/home/zhangzhuang/Datasets/ILSVRC2012-100'
+            else:
+                raise Exception('Wrong device')
+            self.mean=np.array((0.485, 0.456, 0.406),dtype=np.float32)
+            self.std=np.array((0.229, 0.224, 0.225),dtype=np.float32)
+            self.nb_classes=1000
+            self.input_shape=(3,224,224)
+            self.pred_batch_size=8
+            self.label_batch_size=5
+            self.hyperopt_attacker_name='FGSM_L2_IDP'
+            self.hyperopt_img_num=1000
+            self.hyperopt_max_evals=4
+            self.hyperopt_resolution=0.01
+            self.cnn_max_lr     = 3e-4
+            self.cnn_epochs     = 300
+            self.cnn_batch_size = 8#*16*5
             
         else:
             raise Exception('Wrong dataset')
-            
+'''            
 # dir_cifar_img='/media/ubuntu204/F/Dataset/cifar-10'  
 dir_cifar='/home/estar/zhangzhuang/Dataset/Cifar'
 dir_feature_cifar='../models/cifar-10_class_to_idx.json'
@@ -117,11 +155,11 @@ adb_epochs=1000
 #svm params
 svm_gamma=0.1
 svm_c=5
-
+'''
 #cnn-params
-cnn_max_lr     = 3e-4
-cnn_epochs     = 300
-cnn_batch_size = 256#*16*5
+# cnn_max_lr     = 3e-4
+# cnn_epochs     = 300
+# cnn_batch_size = 256#*16*5
     
 
 def select_attack(fmodel, att_method, eps):
@@ -214,7 +252,7 @@ def load_dataset(dataset,dataset_dir,dataset_type='train'):
     elif 'imagenet'==dataset:
         # normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
         #                          std=[0.229, 0.224, 0.225])
-        ret_datasets = datasets.ImageFolder(dataset_dir,
+        ret_datasets = datasets.ImageFolder(os.path.join(dataset_dir,dataset_type),
                                             transforms.Compose([
                                                 transforms.RandomResizedCrop(224),
                                                 transforms.RandomHorizontalFlip(),
@@ -275,8 +313,8 @@ def img2dct(clean_imgs):
     assert(4==len(clean_imgs.shape))
     assert(clean_imgs.shape[1]==clean_imgs.shape[2])
     n = clean_imgs.shape[0]
-    h = clean_imgs.shape[1]
-    w = clean_imgs.shape[2]
+    # h = clean_imgs.shape[1]
+    # w = clean_imgs.shape[2]
     c = clean_imgs.shape[3]
     
     block_dct=np.zeros_like(clean_imgs)

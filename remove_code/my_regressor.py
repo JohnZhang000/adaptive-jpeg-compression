@@ -26,6 +26,7 @@ import pickle
 import joblib
 import logging
 from models.resnet_reg import resnet50,resnet18
+from pytorchtools import EarlyStopping
 sys.path.append('../common_code')
 import general as g
 
@@ -180,58 +181,61 @@ if __name__=='__main__':
     # 配置解释器参数
     if len(sys.argv)!=2:
         print('Manual Mode !!!')  
-        model_type    = 'allconv'
+        model_type    = 'resnet50_imagenet'
         # device     = 3
         flag_manual_mode = 1
     else:
         print('Terminal Mode !!!')
-        model_type    = sys.argv[1]
-        # device     = int(sys.argv[3])
-        # max_lr     = float(sys.argv[1])
-        # epochs     = int(sys.argv[2])
-        # batch_size = int(sys.argv[3])
-        # s_dir      = sys.argv[4]
-        # vanilla_model = sys.argv[5]
-        # device     = int(sys.argv[6])   
+        model_type    = sys.argv[1]  
         flag_manual_mode = 0
 
     # os.environ['CUDA_VISIBLE_DEVICES']=str(1)
     g.setup_seed(0)
-    dataset       = 'cifar-10'
+    dataset_name       = 'cifar-10'
     if 'imagenet' in model_type:
-        dataset='imagenet'
-    s_dir      = '../saved_tests/img_attack_reg/spectrum_label'
-    data_dir      = os.path.join(s_dir,model_type)
+        dataset_name='imagenet'
+    print(dataset_name)
+    data_setting=g.dataset_setting(dataset_name)
+    data_dir      = '../saved_tests/img_attack/'+model_type
     #cnn-params
-    cnn_max_lr     = g.cnn_max_lr
-    cnn_epochs     = g.cnn_epochs
-    cnn_batch_size = g.cnn_batch_size
+    cnn_max_lr     = data_setting.cnn_max_lr
+    cnn_epochs     = data_setting.cnn_epochs
+    cnn_batch_size = data_setting.cnn_batch_size
     
     mean_std=data_dir+'/mean_std_train.npy'
     train_dataset = spectrum_dataset(data_dir+'/spectrums_train.npy',data_dir+'/labels_train.npy',mean_std)
     test_dataset  = spectrum_dataset(data_dir+'/spectrums_test.npy',data_dir+'/labels_test.npy',mean_std) 
     train_loader = DataLoader(train_dataset, batch_size=cnn_batch_size,shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=cnn_batch_size)       
-    logging.basicConfig(filename=os.path.join(data_dir,'log_train.txt'),
-                        level=logging.INFO)
-    logging.info(('\n----------record-start-----------'))
+
     
-    #adaboost params
-    adb_max_depth=g.adb_max_depth
-    adb_epochs=g.adb_epochs
+    logger=logging.getLogger(name='r')
+    logger.setLevel(logging.FATAL)
+    formatter=logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s -%(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S')
     
-    #svm params
-    svm_gamma=g.svm_gamma
-    svm_c=g.svm_c
+    fh=logging.FileHandler(os.path.join(data_dir,'log_train.txt'))
+    fh.setLevel(logging.FATAL)
+    fh.setFormatter(formatter)
+    
+    ch=logging.StreamHandler()
+    ch.setLevel(logging.FATAL)
+    ch.setFormatter(formatter)
+    
+    logger.addHandler(ch)
+    logger.addHandler(fh)
+    
     
     # model = Net()
-    model = resnet50()
+    model = resnet50(data_setting.nb_classes)
     model.init_weights()
     model = torch.nn.DataParallel(model).cuda()
     optimizer = Adam(model.parameters(),lr=cnn_max_lr,weight_decay=1e-4)
     cost = my_loss#MSELoss(reduction='mean')#CrossEntropyLoss()
     epoch = cnn_epochs
     best_loss = 1000
+    early_stoper=EarlyStopping(patience=10, verbose=False, delta=0, trace_func=logger.fatal)
     
     for _epoch in range(epoch):
         model.train()
@@ -243,9 +247,10 @@ if __name__=='__main__':
             predict_y = model(train_x.float())
             loss = cost(predict_y, train_label)
             if idx % 10 == 0:
-                print('[Epoch]:{}, idx: {}, loss: {}'.format(_epoch, idx, loss.detach().cpu().numpy().sum().item()))
+                logger.fatal('[Epoch]:{}, idx: {}, loss: {}'.format(_epoch, idx, loss.detach().cpu().numpy().sum().item()))
             loss.backward()
             optimizer.step()
+            torch.cuda.empty_cache()
     
         correct = 0
         sum_loss = 0
@@ -259,15 +264,19 @@ if __name__=='__main__':
             label_np = test_label#.numpy()
             test_loss=cost(predict_y, label_np)
             sum_loss+=test_loss.detach().cpu().numpy()
+            torch.cuda.empty_cache()
             
         is_best = sum_loss<best_loss
         ave_loss=sum_loss / (idx+1)
-        print('[Epoch]:{}, ave_loss: {:.8f}'.format(_epoch, ave_loss))
+        logger.fatal('[Epoch]:{}, ave_loss: {:.8f}'.format(_epoch, ave_loss))
         # torch.save(model, 'models/mnist_{:.4f}.pkl'.format(ave_loss))
         save_checkpoint({'epoch':_epoch+1,
                          'state_dict':model.state_dict(),
                          'optimizer':optimizer.state_dict(),
                          }, is_best, data_dir)
+        early_stoper(ave_loss)
+        if early_stoper.early_stop:
+            break
     
     preds=[]
     gts=[]

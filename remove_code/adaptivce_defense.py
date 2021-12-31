@@ -27,17 +27,18 @@ import general as g
 class adaptive_defender:
 
     # 解释器初始化
-    def __init__(self,table_pkl,dir_model,model_mean_std=None):
+    def __init__(self,table_pkl,dir_model,nb_classes,input_size,pred_batch_size,model_mean_std=None):
         self.grid_size=8
-        self.input_size=32
-        self.pad_size=32
+        self.input_size=input_size
+        self.pad_size=self.input_size
+        self.pred_batch_size=pred_batch_size
         
         
         self.tabel_dict=pickle.load(open(table_pkl,'rb'))
         
         self.model=None
         if not (dir_model is None):
-            self.model=resnet50().eval()
+            self.model=resnet50(nb_classes).eval()
             self.model = torch.nn.DataParallel(self.model).cuda()
             checkpoint = torch.load(dir_model)
             self.model.load_state_dict(checkpoint["state_dict"],True)
@@ -143,7 +144,7 @@ class adaptive_defender:
         imgs_tmp=imgs_tmp.transpose(0,3,1,2)   
         
         eps_list=[]
-        batch_size=g.cnn_batch_size
+        batch_size=self.pred_batch_size
         batch_num=int(np.ceil(imgs_tmp.shape[0]/batch_size))
         for i in range(batch_num):
             start_idx=batch_size*i
@@ -250,4 +251,93 @@ class adaptive_defender:
         if flag_flip:
             augeds = np.flip(augeds,2).copy()
         return augeds,labels 
+    
+def Cal_channel_wise_qtable(clean_imgs,adv_imgs,thresh):
+    n = clean_imgs.shape[0]
+    h = clean_imgs.shape[1]
+    w = clean_imgs.shape[2]
+    c = clean_imgs.shape[3]
+    num=8
+    
+    Q0=np.zeros((c,num,num))
+    block_diff_all=np.zeros((n,num,num,c))
+
+    block_cln_all=[[] for _ in range(c)]
+    block_adv_all=[[] for _ in range(c)]
+    block_nums=0
+
+
+    horizontal_blocks_num = w / num
+    vertical_blocks_num = h / num
+    n_block_cln = np.split(clean_imgs,n,axis=0)
+    n_block_adv = np.split(adv_imgs,n,axis=0)
+    for i in range(n):
+        c_block_cln = np.split(n_block_cln[i],c,axis =3)
+        c_block_adv = np.split(n_block_adv[i],c,axis =3)
+        for j in range(len(c_block_cln)):
+            ch_block_cln=c_block_cln[j].squeeze()
+            ch_block_adv=c_block_adv[j].squeeze()
+            vertical_blocks_cln = np.split(ch_block_cln, vertical_blocks_num,axis = 1)
+            vertical_blocks_adv = np.split(ch_block_adv, vertical_blocks_num,axis = 1)
+            for k in range(len(vertical_blocks_cln)):
+                block_ver_cln=vertical_blocks_cln[k].squeeze()
+                block_ver_adv=vertical_blocks_adv[k].squeeze()
+                hor_blocks_cln = np.split(block_ver_cln,horizontal_blocks_num,axis = 0)
+                hor_blocks_adv = np.split(block_ver_adv,horizontal_blocks_num,axis = 0)
+                for m in range(len(hor_blocks_cln)):
+                    block_nums+=1
+                    block_cln=hor_blocks_cln[m]
+                    block_adv=hor_blocks_adv[m]
+                    block_cln = np.reshape(block_cln,(num,num))
+                    block_adv = np.reshape(block_adv,(num,num))
+                    
+                    # block_cln_dct = g.dct2(block_cln)
+                    # block_adv_dct = g.dct2(block_adv)
+                    
+                    block_cln_tmp = np.log(1+np.abs(g.dct2(block_cln)))
+                    block_adv_tmp = np.log(1+np.abs(g.dct2(block_adv)))
+                    
+                    # block_cln_tmp = np.abs(dct2(block_cln))
+                    # block_adv_tmp = np.abs(dct2(block_adv))
+                    
+                    block_cln_all[j].append(np.expand_dims(block_cln_tmp,axis=0))
+                    block_adv_all[j].append(np.expand_dims(block_adv_tmp,axis=0))
+                    block_diff = np.abs(block_adv_tmp-block_cln_tmp)
+                    # block_diff = block_diff/(block_cln+1e-10)
+                    # block_diff = cv2.dct(block_adv-block_cln)
+                    # block_diff = np.abs(block_diff/(dct2(block_cln)+1e-10))
+                    
+                    
+                    # block_tmp=np.fft.fft2(block_adv)-np.fft.fft2(block_cln)
+                    # block_diff=np.log(1+np.sqrt(block_tmp.real**2+block_tmp.imag**2))                                    
+                    
+                    # block_cln_all=block_cln_all+block_cln_dct
+                    # block_adv_all=block_adv_all+block_adv_dct
+                    
+                    block_diff_all[i,...,j]=block_diff_all[i,...,j]+block_diff
+                    xmax=np.argmax(block_diff)
+                    xq=xmax//num
+                    yq=xmax%num
+                    
+                    Q0[j,xq,yq]+=1
+              
+    # Q=softmax(Q0)
+    Q0[Q0==0]=1
+    Q=(Q0/Q0.min())
+    
+    # block_cln_all_mean=np.vstack(block_cln_all).mean(axis=0).reshape([8,8])
+    # block_adv_all_mean=np.vstack(block_adv_all).mean(axis=0).reshape([8,8])
+    block_diff_out=np.ones((num,num,c))
+    for j in range(block_diff_all.shape[-1]):
+        
+        block_cln_tmp=np.vstack(block_cln_all[j])
+        block_cln_tmp=block_cln_tmp.mean(axis=0)
+        abs_thresh=block_cln_tmp.max()*thresh[j]
+        
+        block_tmp=block_diff_all[...,j]      
+    
+        block_tmp[block_tmp>abs_thresh]=100
+        block_tmp[block_tmp<abs_thresh]=1
+        block_diff_out[...,j]=block_tmp.mean(axis=0)
+    return block_diff_out,Q,np.vstack(block_cln_all),np.vstack(block_adv_all)
         

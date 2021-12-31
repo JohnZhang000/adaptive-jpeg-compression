@@ -6,25 +6,28 @@ Created on Wed Dec 29 17:24:38 2021
 @author: estar
 """
 
-from hyperopt import hp, fmin, rand, space_eval, Trials
-from tqdm import tqdm
-from defense_ago import Cal_channel_wise_qtable
+from hyperopt import hp, fmin, rand, Trials
+# from hyperopt.mongoexp import MongoTrials
+
+# from tqdm import tqdm
+from adaptivce_defense import Cal_channel_wise_qtable
 from art.attacks.evasion import FastGradientMethod
 
 import numpy as np
 import torch
+from torch.optim import Adam
 import os 
 import sys
 import torch.nn as nn
 import pickle
-import cv2
+# import cv2
 from torch.utils.data import DataLoader
 from art.estimators.classification import PyTorchClassifier
 from adaptivce_defense import adaptive_defender
 import matplotlib.pyplot as plt
 sys.path.append('../common_code')
 import general as g
-import pickle
+# import pickle
 
 def get_acc(fmodel,images,labels):
     predictions = fmodel.predict(images)
@@ -83,7 +86,11 @@ def get_shapleys_batch_adv(attack, model, dataloader, num_samples):
             break    
 
     if num_samples_now<num_samples:
-        print('\n!!! not enough samples\n')
+        try:
+            print('\n!!! not enough samples for eps %.1f\n'%attack.eps)
+        except:
+            print('\n!!! not enough samples \n')
+            
     
     images_np=None
     images_adv_np=None
@@ -118,20 +125,23 @@ def objective(args):
     
     threshs=np.array((args[0],args[1],args[2]))
     saved_dir=args[3]
-    fmodel=args[4]
-    model=args[5]
-    attacker_name=args[6]
-    img_num=args[7]
-    eps=args[8]
+    # fmodel=args[4]
+    # model=args[5]
+    attacker_name=args[4]
+    img_num=args[5]
+    eps=args[6]
+    nb_classes=args[7]
+    input_size=args[8]
+    pred_batch_size=args[9]
     
-    print(threshs)
+    # print(threshs)
     '''
     计算量表并初始化防御
     '''
     cal_table(threshs,saved_dir,fmodel,model,attacker_name,img_num,eps)
 
     table_pkl=os.path.join(saved_dir,'table_dict.pkl')
-    defender=adaptive_defender(table_pkl,None,None)
+    defender=adaptive_defender(table_pkl,None,nb_classes,input_size,pred_batch_size,None)
   
     '''
     计算防御效果
@@ -141,7 +151,7 @@ def objective(args):
     accs=get_defended_attacked_acc(fmodel,dataloader,attacks,[defender.defend],['ADAD+eps-flip'])
     metric=accs.mean(axis=0)[1]
     output=-metric
-    print(accs[:,1])
+    # print(accs[:,1])
     return output
 
 if __name__=='__main__':    
@@ -156,13 +166,12 @@ if __name__=='__main__':
         print('Terminal Mode !!!')
         model_vanilla_type  = str(sys.argv[1])
        
-    # global fmodel,model,attacker,attacker_name,img_num,eps
-    attacker_name='FGSM_L2_IDP'
-    img_num=1000
-    max_evals=100
-    resolution=0.01
+    # global fmodel,model#,attacker#,attacker_name,img_num,eps
+    # attacker_name='FGSM_L2_IDP'
+    # max_evals=4
+    # resolution=0.01
     
-    saved_dir = '../saved_tests/img_attack/accuracy/'+model_vanilla_type
+    saved_dir = '../saved_tests/img_attack/'+model_vanilla_type
     if not os.path.exists(saved_dir):
         os.makedirs(saved_dir)
         
@@ -181,16 +190,19 @@ if __name__=='__main__':
     dataset=g.load_dataset(dataset_name,data_setting.dataset_dir,'val')
     dataloader = DataLoader(dataset, batch_size=data_setting.pred_batch_size, drop_last=False)   
     
+    optimizer=Adam
+    optimizer.state_dict
     fmodel = PyTorchClassifier(model = model,nb_classes=data_setting.nb_classes,clip_values=(0,1),
                                input_shape=data_setting.input_shape,loss = nn.CrossEntropyLoss(),
-                               preprocessing=(data_setting.mean, data_setting.std))
+                               preprocessing=(data_setting.mean, data_setting.std),
+                               optimizer=optimizer)
     
     '''
     攻击初始化
     '''
     attacks=[]
     attack_names=[]
-    eps=[0.001,0.1,0.5,1.0,10.0]
+    eps=[0.1,0.5,1.0,10.0]
     for i in range(len(eps)):
           attacks.append(FastGradientMethod(estimator=fmodel,eps=eps[i],norm=2,eps_step=eps[i],batch_size=data_setting.pred_batch_size))
           attack_names.append('FGSM_L2_'+str(eps[i]))    
@@ -198,17 +210,21 @@ if __name__=='__main__':
     '''
     超参数优化
     '''
+    # trials=MongoTrials('mongo://127.0.0.1:27017/foo_db/jobs',exp_key='exp1')
     trials=Trials()
     # space =[hp.quniform('t0',0,0.5,resolution),hp.quniform('t1',0,1,resolution),hp.quniform('t2',0,1,resolution)]
-    space =[hp.quniform('t0',0,1.0,resolution),hp.quniform('t1',0,1,resolution),hp.quniform('t2',0,1,resolution),#hp.choice('t0',[0.9]),hp.choice('t1',[0.01]),hp.choice('t2',[0.01])
+    space =[hp.quniform('t0',0,1.0,data_setting.hyperopt_resolution),hp.quniform('t1',0,1,data_setting.hyperopt_resolution),hp.quniform('t2',0,1,data_setting.hyperopt_resolution),#hp.choice('t0',[0.9]),hp.choice('t1',[0.01]),hp.choice('t2',[0.01])
             hp.choice('saved_dir',[saved_dir]),
-            hp.choice('fmodel',[fmodel]),
-            hp.choice('model',[model]),
-            hp.choice('attacker_name',[attacker_name]),
-            hp.choice('img_num',[img_num]),
-            hp.choice('eps',[eps])]
+            
+            # hp.choice('model',[model]),
+            hp.choice('attacker_name',[data_setting.hyperopt_attacker_name]),
+            hp.choice('img_num',[data_setting.hyperopt_img_num]),
+            hp.choice('eps',[eps]),
+            hp.choice('nb_classes',[data_setting.nb_classes]),
+            hp.choice('input_size',[data_setting.input_shape[-1]]),
+            hp.choice('pred_batch_size',[data_setting.pred_batch_size])]
     
-    best=fmin(objective,space,algo=rand.suggest,max_evals=max_evals,verbose=True, max_queue_len=3,trials=trials)
+    best=fmin(objective,space,algo=rand.suggest,max_evals=data_setting.hyperopt_max_evals,verbose=True, max_queue_len=1,trials=trials)
     pickle.dump(trials,open(os.path.join(saved_dir,'hyperopt_trail.pkl'),"wb"))
     trials=pickle.load(open(os.path.join(saved_dir,'hyperopt_trail.pkl'),"rb"))
     print(best)
@@ -239,4 +255,4 @@ if __name__=='__main__':
     np.save(os.path.join(saved_dir,'hyperopt_trail_np.npy'),trials_np)
     print(trials.best_trial)
     
-    cal_table([best['t0'],best['t1'],best['t2']],saved_dir,fmodel,model,attacker_name,img_num,eps)
+    cal_table([best['t0'],best['t1'],best['t2']],saved_dir,fmodel,model,data_setting.hyperopt_attacker_name,data_setting.hyperopt_img_num,eps)

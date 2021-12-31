@@ -132,7 +132,7 @@ class ResNet(nn.Module):
         output = self.conv4_x(output)
         output = self.conv5_x(output)
         output = self.avg_pool(output)
-        output = output.view(output.size(0), -1)
+        output = output.contiguous().view(output.size(0), -1)
         output = self.fc(output)
         output = self.dp1(output)
         output = self.fc_reg(output)
@@ -167,10 +167,10 @@ def resnet34():
     """
     return ResNet(BasicBlock, [3, 4, 6, 3])
 
-def resnet50():
+def resnet50(nb_classes):
     """ return a ResNet 50 object
     """
-    return ResNet(BottleNeck, [3, 4, 6, 3])
+    return ResNet(BottleNeck, [3, 4, 6, 3],nb_classes)
 
 def resnet101():
     """ return a ResNet 101 object

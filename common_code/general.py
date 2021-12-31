@@ -39,18 +39,19 @@ class dataset_setting():
         self.input_shape=None
         self.pred_batch_size=None
         self.label_batch_size=None
-        self.hyperopt_attacker_name=None
-        self.hyperopt_img_num=None
-        self.hyperopt_max_evals=None
-        self.hyperopt_resolution=None
+        self.label_eps_range=1
+        self.hyperopt_attacker_name='FGSM_L2_IDP'
+        self.hyperopt_img_num=1000
+        self.hyperopt_max_evals=100                                              # modify
+        self.hyperopt_resolution=0.01
         self.device=socket.gethostname()
-        self.cnn_max_lr     = None
-        self.cnn_epochs     = None
+        self.cnn_max_lr     = 3e-4
+        self.cnn_epochs     = 300
         self.cnn_batch_size = None#*16*5
         
         if 'cifar-10'==dataset_name:
             if 'estar-403'==self.device:
-                self.dataset_dir='/home/estar/zhangzhuang/Dataset/Cifar'
+                self.dataset_dir='/home/estar/Datasets/Cifar-10'
             elif 'Jet'==self.device:
                 self.dataset_dir='/home/zhangzhuang/Datasets/Cifar-10'
             else:
@@ -60,20 +61,21 @@ class dataset_setting():
             self.nb_classes=10
             self.input_shape=(3,32,32)
             self.pred_batch_size=256
-            self.label_batch_size=5
-            self.hyperopt_attacker_name='FGSM_L2_IDP'
-            self.hyperopt_img_num=1000
-            self.hyperopt_max_evals=100
-            self.hyperopt_resolution=0.01
-            self.cnn_max_lr     = 3e-4
-            self.cnn_epochs     = 300
+            self.label_batch_size=4
+            # self.hyperopt_attacker_name='FGSM_L2_IDP'
+            # self.hyperopt_img_num=1000
+            # self.hyperopt_max_evals=100
+            # self.hyperopt_resolution=0.01
+            # self.cnn_max_lr     = 3e-4
+            # self.cnn_epochs     = 300
             self.cnn_batch_size = 256#*16*5
+            self.label_eps_range=1
             
             
             
         elif 'imagenet'==dataset_name:
             if 'estar-403'==self.device:
-                self.dataset_dir='/home/estar/Datasets/ILSVRC2012-2'
+                self.dataset_dir='/home/estar/Datasets/ILSVRC2012-100'           # modify
             elif 'Jet'==self.device:
                 self.dataset_dir='/home/zhangzhuang/Datasets/ILSVRC2012-100'
             else:
@@ -83,14 +85,15 @@ class dataset_setting():
             self.nb_classes=1000
             self.input_shape=(3,224,224)
             self.pred_batch_size=8
-            self.label_batch_size=5
-            self.hyperopt_attacker_name='FGSM_L2_IDP'
-            self.hyperopt_img_num=1000
-            self.hyperopt_max_evals=4
-            self.hyperopt_resolution=0.01
-            self.cnn_max_lr     = 3e-4
-            self.cnn_epochs     = 300
+            self.label_batch_size=4
+            # self.hyperopt_attacker_name='FGSM_L2_IDP'
+            # self.hyperopt_img_num=1000
+            # self.hyperopt_max_evals=4
+            # self.hyperopt_resolution=0.01
+            # self.cnn_max_lr     = 3e-4
+            # self.cnn_epochs     = 300
             self.cnn_batch_size = 8#*16*5
+            self.label_eps_range=10
             
         else:
             raise Exception('Wrong dataset')

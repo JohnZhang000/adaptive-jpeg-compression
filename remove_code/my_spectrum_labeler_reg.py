@@ -159,7 +159,7 @@ if __name__=='__main__':
         images=images.numpy()
         labels=labels.numpy()
         
-        attack_eps=1*np.random.rand()
+        attack_eps=data_setting.label_eps_range*np.random.rand()
         attack,eps=g.select_attack(fmodel,data_setting.hyperopt_attacker_name, attack_eps)                
         images_adv_tmp=attack.generate(x=images,y=labels)
         

@@ -200,7 +200,8 @@ if __name__=='__main__':
     '''
     attacks=[]
     attack_names=[]
-    eps_L2=[0.1,0.5,1.0,10.0]
+    eps_L2=[0.1,0.5,1.0,10.0]                                                # modify
+    # eps_L2=[0.1,10.0]
     
     for i in range(len(eps_L2)):
           attacks.append(FastGradientMethod(estimator=fmodel,eps=eps_L2[i],norm=2,eps_step=eps_L2[i]))

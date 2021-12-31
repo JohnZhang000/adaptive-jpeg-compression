@@ -204,7 +204,7 @@ if __name__=='__main__':
     
     mean_std=data_dir+'/mean_std_train.npy'
     train_dataset = spectrum_dataset(data_dir+'/spectrums_train.npy',data_dir+'/labels_train.npy',mean_std)
-    test_dataset  = spectrum_dataset(data_dir+'/spectrums_test.npy',data_dir+'/labels_test.npy',mean_std) 
+    test_dataset  = spectrum_dataset(data_dir+'/spectrums_val.npy',data_dir+'/labels_val.npy',mean_std) 
     train_loader = DataLoader(train_dataset, batch_size=cnn_batch_size,shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=cnn_batch_size)       
 
@@ -234,7 +234,7 @@ if __name__=='__main__':
     optimizer = Adam(model.parameters(),lr=cnn_max_lr,weight_decay=1e-4)
     cost = my_loss#MSELoss(reduction='mean')#CrossEntropyLoss()
     epoch = cnn_epochs
-    best_loss = 1000
+    best_loss = 100000000
     early_stoper=EarlyStopping(patience=10, verbose=False, delta=0, trace_func=logger.fatal)
     
     for _epoch in range(epoch):

@@ -26,7 +26,7 @@ else
 fi
 echo "Host:"$HOSTNAME"  Device:"$devices    |tee $log_name
 
-model_type=(allconv vgg16_imagenet resnet50_imagenet vgg16 resnet50)
+model_type=(allconv vgg16 vgg16_imagenet resnet50_imagenet resnet50)
 
 echo  'SUMMARY:whole'                      |tee -a $log_name
 echo  'model_type:       '${model_type[*]} |tee -a $log_name
@@ -46,22 +46,17 @@ do
 
             echo  ''                                     |tee -a $log_name
             echo  'Thresh:            '                  |tee -a $log_name
-            CUDA_VISIBLE_DEVICES=$devices nohup python ../remove_code/thresh_hyperopt.py $model |tee -a $log_name
+            # CUDA_VISIBLE_DEVICES=$devices nohup python ../remove_code/thresh_hyperopt.py $model |tee -a $log_name
             echo  'end_time:       '$(date +%Y%m%d_%H%M%S)$a                    |tee -a $log_name
-            
+       
             echo  ''                                     |tee -a $log_name
             echo  'label train:       '                  |tee -a $log_name            
-            CUDA_VISIBLE_DEVICES=$devices nohup python ../remove_code/my_spectrum_labeler_reg.py $model train |tee -a $log_name 
-            echo  'end_time:       '$(date +%Y%m%d_%H%M%S)$a                    |tee -a $log_name
-            
-            echo  ''                                     |tee -a $log_name
-            echo  'label test:        '                  |tee -a $log_name            
-            CUDA_VISIBLE_DEVICES=$devices nohup python ../remove_code/my_spectrum_labeler_reg.py $model val  |tee -a $log_name 
+            # CUDA_VISIBLE_DEVICES=$devices nohup python ../remove_code/my_spectrum_labeler_reg.py $model train |tee -a $log_name 
             echo  'end_time:       '$(date +%Y%m%d_%H%M%S)$a                    |tee -a $log_name
 
             echo  ''                                     |tee -a $log_name
             echo  'train:             '                  |tee -a $log_name            
-            CUDA_VISIBLE_DEVICES=$devices nohup python ../remove_code/my_regressor.py $model  |tee -a $log_name
+            CUDA_VISIBLE_DEVICES=$devices nohup python ../remove_code/my_regressor_auto_label.py $model  |tee -a $log_name
             echo  'end_time:       '$(date +%Y%m%d_%H%M%S)$a                   |tee -a $log_name
 
             echo  ''                                     |tee -a $log_name

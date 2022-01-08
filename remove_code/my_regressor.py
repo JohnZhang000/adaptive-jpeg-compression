@@ -205,8 +205,8 @@ if __name__=='__main__':
     mean_std=data_dir+'/mean_std_train.npy'
     train_dataset = spectrum_dataset(data_dir+'/spectrums_train.npy',data_dir+'/labels_train.npy',mean_std)
     test_dataset  = spectrum_dataset(data_dir+'/spectrums_val.npy',data_dir+'/labels_val.npy',mean_std) 
-    train_loader = DataLoader(train_dataset, batch_size=cnn_batch_size,shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size=cnn_batch_size)       
+    train_loader = DataLoader(train_dataset, batch_size=cnn_batch_size,shuffle=True,num_workers=data_setting.workers, pin_memory=True)
+    test_loader = DataLoader(test_dataset, batch_size=cnn_batch_size,num_workers=data_setting.workers, pin_memory=True)       
 
     
     logger=logging.getLogger(name='r')

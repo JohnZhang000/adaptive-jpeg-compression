@@ -4,7 +4,7 @@ Created on Wed Jun 23 19:47:03 2021
 
 @author: DELL
 """
-
+import gc
 import numpy as np
 import torch
 import os 
@@ -68,6 +68,8 @@ def get_defended_attacked_acc(fmodel,dataloader,attackers,defenders,defender_nam
         images=images.numpy()
         labels=labels.numpy()
         for j in range(len(attackers)+1):
+            images_cp=images.copy()
+            labels_cp=labels.copy()
             images_att=images.copy()
             eps=0
             if j>0:
@@ -75,18 +77,26 @@ def get_defended_attacked_acc(fmodel,dataloader,attackers,defenders,defender_nam
                     eps=attackers[j-1].eps
                 except:
                     eps=0
-                images_att  = attackers[j-1].generate(x=images.copy())
+                images_att  = attackers[j-1].generate(x=images_cp)
             for k in range(len(defenders)+1):
                     images_def = images_att.copy()
+                    images_att_trs = images_att.transpose(0,2,3,1).copy()
                     if k>0:
                         if 'ADAD-flip'==defender_names[k-1]:
-                            images_def,_ = defenders[k-1](images_att.transpose(0,2,3,1).copy(),labels.copy(),None,0)
+                            images_def,_ = defenders[k-1](images_att_trs,labels_cp,None,0)
                         elif 'ADAD+eps-flip'==defender_names[k-1]:
-                            images_def,_ = defenders[k-1](images_att.transpose(0,2,3,1).copy(),labels.copy(),eps*np.ones(images_att.shape[0]),0)
+                            images_def,_ = defenders[k-1](images_att_trs,labels_cp,eps*np.ones(images_att.shape[0]),0)
                         else:
-                            images_def,_ = defenders[k-1](images_att.transpose(0,2,3,1).copy(),labels.copy())
+                            images_def,_ = defenders[k-1](images_att_trs,labels_cp)
                         images_def=images_def.transpose(0,3,1,2)
-                    cors[j,k] += get_acc(fmodel,images_def,labels)
+                    images_def_cp = images_def.copy()
+                    cors[j,k] += get_acc(fmodel,images_def_cp,labels)
+                    del images_def,images_def_cp,images_att_trs
+                    # cors[j,k] += get_acc(fmodel,images_def,labels)
+                    # del images_def,images_att_trs
+                    gc.collect()
+            del images_cp,images_att,labels_cp
+            gc.collect()
     cors=cors/len(dataloader.dataset)
     return cors
 
@@ -135,7 +145,7 @@ if __name__=='__main__':
         dataset_name='cifar-10'
     data_setting=g.dataset_setting(dataset_name)
     dataset=g.load_dataset(dataset_name,data_setting.dataset_dir,'val')
-    dataloader = DataLoader(dataset, batch_size=data_setting.pred_batch_size, drop_last=False)    
+    dataloader = DataLoader(dataset, batch_size=data_setting.pred_batch_size, drop_last=False, num_workers=data_setting.workers, pin_memory=True)    
 
     '''
     加载模型
@@ -187,12 +197,14 @@ if __name__=='__main__':
     # defences_pre.append(fd_ago_new.defend_channel_wise_adaptive_table)
     # defences_names_pre.append('fd_ago_my_ada')
     adaptive_defender=adaptive_defender(table_pkl,gc_model_dir,data_setting.nb_classes,data_setting.input_shape[-1],data_setting.pred_batch_size,model_mean_std)
+    
     defences_pre.append(adaptive_defender.defend)
     defences_names_pre.append('ADAD')
     defences_pre.append(adaptive_defender.defend)
     defences_names_pre.append('ADAD-flip')
     defences_pre.append(adaptive_defender.defend)
     defences_names_pre.append('ADAD+eps-flip')
+
     
     
     '''
@@ -200,7 +212,7 @@ if __name__=='__main__':
     '''
     attacks=[]
     attack_names=[]
-    eps_L2=[0.1,0.5,1.0,10.0]                                                # modify
+    eps_L2=[0.1,0.5,1.0]                                                # modify
     # eps_L2=[0.1,10.0]
     
     for i in range(len(eps_L2)):

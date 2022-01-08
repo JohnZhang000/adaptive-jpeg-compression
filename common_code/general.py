@@ -25,10 +25,12 @@ from torchvision.transforms import ToTensor
 import torchvision.transforms as transforms
 from scipy.fftpack import dct,idct
 import socket
+import PIL
 
 attack_names=['FGSM_L2_IDP','PGD_L2_IDP','CW_L2_IDP','Deepfool_L2_IDP','FGSM_Linf_IDP','PGD_Linf_IDP','CW_Linf_IDP']
 eps_L2=[0.1,1.0,10.0]
 eps_Linf=[0.01,0.1,1.0,10.0]
+epsilon=1e-10
       
 class dataset_setting():
     def __init__(self,dataset_name='cifar-10'):
@@ -42,18 +44,31 @@ class dataset_setting():
         self.label_eps_range=1
         self.hyperopt_attacker_name='FGSM_L2_IDP'
         self.hyperopt_img_num=1000
+        self.hyperopt_img_val_num=None
         self.hyperopt_max_evals=100                                              # modify
-        self.hyperopt_resolution=0.01
+        self.hyperopt_thresh_upper=0.1
+        self.hyperopt_thresh_lower=0.0
+        self.hyperopt_resolution=0.001
+        self.early_stoper_patience=10
+        
         self.device=socket.gethostname()
         self.cnn_max_lr     = 3e-4
         self.cnn_epochs     = 300
         self.cnn_batch_size = None#*16*5
+        self.workers=20
         
         if 'cifar-10'==dataset_name:
             if 'estar-403'==self.device:
                 self.dataset_dir='/home/estar/Datasets/Cifar-10'
+                self.workers=20
             elif 'Jet'==self.device:
                 self.dataset_dir='/home/zhangzhuang/Datasets/Cifar-10'
+                self.workers=32
+            elif 'QuadCopter'==self.device:
+                self.dataset_dir='/home/zhangzhuang/Datasets/Cifar-10'
+                self.workers=48
+            elif 'ubuntu204'==self.device:
+                self.dataset_dir='/media/ubuntu204/F/Dataset/cifar-10'
             else:
                 raise Exception('Wrong device')
             self.mean=np.array((0.5,0.5,0.5),dtype=np.float32)
@@ -64,6 +79,7 @@ class dataset_setting():
             self.label_batch_size=4
             # self.hyperopt_attacker_name='FGSM_L2_IDP'
             # self.hyperopt_img_num=1000
+            # self.hyperopt_img_val_num=0.1
             # self.hyperopt_max_evals=100
             # self.hyperopt_resolution=0.01
             # self.cnn_max_lr     = 3e-4
@@ -76,94 +92,36 @@ class dataset_setting():
         elif 'imagenet'==dataset_name:
             if 'estar-403'==self.device:
                 self.dataset_dir='/home/estar/Datasets/ILSVRC2012-100'           # modify
+                self.workers=20
             elif 'Jet'==self.device:
                 self.dataset_dir='/home/zhangzhuang/Datasets/ILSVRC2012-100'
+                self.workers=32
+            elif 'QuadCopter'==self.device:
+                self.dataset_dir='/home/zhangzhuang/Datasets/ILSVRC2012-100'
+                self.workers=48
+            elif 'ubuntu204'==self.device:
+                self.dataset_dir='/media/ubuntu204/F/Dataset/ILSVRC2012-100'
             else:
                 raise Exception('Wrong device')
             self.mean=np.array((0.485, 0.456, 0.406),dtype=np.float32)
             self.std=np.array((0.229, 0.224, 0.225),dtype=np.float32)
             self.nb_classes=1000
             self.input_shape=(3,224,224)
-            self.pred_batch_size=8
+            self.pred_batch_size=32
             self.label_batch_size=4
             # self.hyperopt_attacker_name='FGSM_L2_IDP'
             # self.hyperopt_img_num=1000
+            self.hyperopt_img_val_num=0.2
             # self.hyperopt_max_evals=4
             # self.hyperopt_resolution=0.01
             # self.cnn_max_lr     = 3e-4
             # self.cnn_epochs     = 300
-            self.cnn_batch_size = 8#*16*5
-            self.label_eps_range=10
+            self.cnn_batch_size = 32#*16*5
+            self.label_eps_range=1
             
         else:
             raise Exception('Wrong dataset')
-'''            
-# dir_cifar_img='/media/ubuntu204/F/Dataset/cifar-10'  
-dir_cifar='/home/estar/zhangzhuang/Dataset/Cifar'
-dir_feature_cifar='../models/cifar-10_class_to_idx.json'
-mean_cifar   = np.array((0.5,0.5,0.5),dtype=np.float32)
-std_cifar    = np.array((0.5,0.5,0.5),dtype=np.float32)
-# mean_cifar   = np.array((0.0,0.0,0.0),dtype=np.float32)
-# std_cifar    = np.array((1.0,1.0,1.0),dtype=np.float32)
-nb_classes_cifar = 10
-input_shape_cifar=(3,32,32)
-spectrum_num_cifar=8
-# eps_L2_label_cifar=[0.1,1.0,10.0,100.0]
-eps_L2_label_cifar=[0.1,0.2,0.3,0.4]
-eps_Linf_label_cifar=[0.005,0.01,0.1,1.0]
-rober_np_cifar= np.array([[0,1],[0,2],
-                [1,1],[1,2],
-                [8,1],[8,2],[8,3],
-                [9,1],[9,2],[9,3],
-                [4,1],[4,2],[4,3],
-                [5,1],[5,2],[5,3],
-                [12,1],[12,2],[12,3],
-                [13,1],[13,2],[13,3],
-               ])
-levels_all_cifar=8
-levels_start_cifar=0
-levels_end_cifar=6
-
-shap_batch_cifar=1000
-spectrum_batch_cifar=1000
-
-dir_imagenet='../../../../../media/ubuntu204/F/Dataset/ILSVRC2012-10'
-dir_feature_imagenet='../models/imagenet_class_to_idx.json'
-mean_imagenet   = np.array((0.485, 0.456, 0.406),dtype=np.float32)
-std_imagenet    = np.array((0.229, 0.224, 0.225),dtype=np.float32)
-nb_classes_imagenet = 1000
-input_shape_imagenet=(3,224,224)
-spectrum_num_imagenet=8
-eps_L2_label_imagenet=[1.0,10.0]
-eps_Linf_label_imagenet=[0.1,1.0]
-rober_np_imagenet= np.array([[0,1],
-                [1,1]
-               ]) # 被标为rober的设置
-levels_all_imagenet=8
-levels_start_imagenet=0
-levels_end_imagenet=6
-
-shap_batch_imagenet=500
-spectrum_batch_imagenet=500
-
-label_batch=10
-pred_batch=100
-
-max_img_in_uap_attack=100
-
-#adaboost params
-adb_max_depth=2
-adb_epochs=1000
-
-#svm params
-svm_gamma=0.1
-svm_c=5
-'''
-#cnn-params
-# cnn_max_lr     = 3e-4
-# cnn_epochs     = 300
-# cnn_batch_size = 256#*16*5
-    
+   
 
 def select_attack(fmodel, att_method, eps):
     if att_method   == 'FGSM_L2_IDP':
@@ -245,7 +203,7 @@ def select_model(model_type,dir_model):
         raise Exception('Wrong model name: {} !!!'.format(model_type))
     return model,dataset
 
-def load_dataset(dataset,dataset_dir,dataset_type='train'):
+def load_dataset(dataset,dataset_dir,dataset_type='train',under_sample=None):
     if 'mnist'==dataset:
         ret_datasets = datasets.mnist.MNIST(root=dataset_dir, train=('train'==dataset_type), transform=ToTensor(), download=True)
     elif 'cifar-10'==dataset:
@@ -263,7 +221,71 @@ def load_dataset(dataset,dataset_dir,dataset_type='train'):
                                                 ]))
     else:
         raise Exception('Wrong dataset')
+    
+    if under_sample:
+        select_num=int(under_sample*len(ret_datasets))
+        left_num=len(ret_datasets)-select_num
+        select_datasets,_=torch.utils.data.random_split(ret_datasets, [select_num,left_num])
+        ret_datasets=select_datasets
     return ret_datasets
+
+def batch_random_attack(img_t,data_setting,fmodel,mean_std=None):
+    imgs=img_t.numpy()
+    imgs_dcts=np.zeros_like(imgs)
+    eps=np.ones(imgs.shape[0])
+    assert(imgs.shape[2]==imgs.shape[3])
+
+    label_batch_size=data_setting.label_batch_size
+    label_batch_num=int(np.ceil(imgs.shape[0]/data_setting.label_batch_size))
+
+    for i in range(label_batch_num):
+        attack_eps=data_setting.label_eps_range*(np.random.rand()+epsilon)
+        attack=FastGradientMethod(estimator=fmodel,eps=attack_eps,norm=2)
+
+        start_idx=label_batch_size*i
+        end_idx=min(label_batch_size*(i+1),imgs.shape[0])
+        imgs_adv=attack.generate(imgs[start_idx:end_idx,...])
+        imgs_ycbcr=rgb_to_ycbcr(imgs_adv.transpose(0,2,3,1))
+        imgs_dct=img2dct(imgs_ycbcr)
+        imgs_dct=imgs_dct.transpose(0,3,1,2)
+        imgs_dcts[start_idx:end_idx,...]=imgs_dct
+        eps[start_idx:end_idx]=attack_eps
+
+    if not (mean_std is None):
+        imgs_dcts=(imgs_dcts-mean_std[0:3,...])/mean_std[3:6,...]
+    imgs_dcts=torch.from_numpy(imgs_dcts)
+    eps=torch.from_numpy(eps)
+    return imgs_dcts,eps
+    
+'''  
+def load_attacked_dataset(dataset,data_setting,fmodel,dataset_type='train',under_sample=None):
+            
+    if 'mnist'==dataset:
+        ret_datasets = datasets.mnist.MNIST(root=data_setting.dataset_dir, train=('train'==dataset_type), transform=transforms.Compose([random_attack]), download=True)
+    elif 'cifar-10'==dataset:
+        # normalize = transforms.Normalize(mean=np.array((0.0,0.0,0.0),dtype=np.float32),
+        #                          std=np.array((1.0,1.0,1.0),dtype=np.float32))
+        ret_datasets = datasets.CIFAR10(root=data_setting.dataset_dir, train=('train'==dataset_type), transform=transforms.Compose([transforms.ToTensor()]), download=True)
+    elif 'imagenet'==dataset:
+        # normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
+        #                          std=[0.229, 0.224, 0.225])
+        ret_datasets = datasets.ImageFolder(os.path.join(data_setting.dataset_dir,dataset_type),
+                                            transforms.Compose([
+                                                transforms.RandomResizedCrop(224),
+                                                transforms.RandomHorizontalFlip(),
+                                                random_attack,
+                                                transforms.ToTensor(),
+                                                ]))
+    else:
+        raise Exception('Wrong dataset')
+    
+    if under_sample:
+        select_num=int(under_sample*len(ret_datasets))
+        left_num=len(ret_datasets)-select_num
+        select_datasets,_=torch.utils.data.random_split(ret_datasets, [select_num,left_num])
+        ret_datasets=select_datasets
+    return ret_datasets
+'''  
 
 def ycbcr_to_rgb(imgs):
     assert(4==len(imgs.shape))

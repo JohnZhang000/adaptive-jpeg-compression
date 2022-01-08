@@ -327,6 +327,7 @@ def Cal_channel_wise_qtable(clean_imgs,adv_imgs,thresh):
     
     # block_cln_all_mean=np.vstack(block_cln_all).mean(axis=0).reshape([8,8])
     # block_adv_all_mean=np.vstack(block_adv_all).mean(axis=0).reshape([8,8])
+    block_diff_all=block_diff_all/(horizontal_blocks_num*vertical_blocks_num)
     block_diff_out=np.ones((num,num,c))
     for j in range(block_diff_all.shape[-1]):
         

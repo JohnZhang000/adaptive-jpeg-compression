@@ -142,7 +142,7 @@ if __name__=='__main__':
     '''
     data_setting=g.dataset_setting(dataset_name)
     dataset=g.load_dataset(dataset_name,data_setting.dataset_dir,data)
-    dataloader = DataLoader(dataset, batch_size=data_setting.label_batch_size, drop_last=False)   
+    dataloader = DataLoader(dataset, batch_size=data_setting.label_batch_size, drop_last=False, num_workers=data_setting.workers, pin_memory=True)   
     
     fmodel = PyTorchClassifier(model = model,nb_classes=data_setting.nb_classes,clip_values=(0,1),
                                input_shape=data_setting.input_shape,loss = nn.CrossEntropyLoss(),
@@ -182,10 +182,10 @@ if __name__=='__main__':
     std_np=np.vstack(std_list)
     mean_std=np.vstack((mean_np,std_np)).transpose(1,2,0)
     
-    a1=(spectrums_np-mean_std[...,0:3])/mean_std[...,3:6]
+    # a1=(spectrums_np-mean_std[...,0:3])/mean_std[...,3:6]
     
-    np.save(os.path.join(saved_dir_path,'spectrums_'+data+'.npy'), spectrums_np)
-    np.save(os.path.join(saved_dir_path,'labels_'+data+'.npy'), labels_np)
+    # np.save(os.path.join(saved_dir_path,'spectrums_'+data+'.npy'), spectrums_np)
+    # np.save(os.path.join(saved_dir_path,'labels_'+data+'.npy'), labels_np)
     np.save(os.path.join(saved_dir_path,'mean_std_'+data+'.npy'), mean_std)
     end_time=time.time()
     

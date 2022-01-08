@@ -107,7 +107,7 @@ class dataset_setting():
             self.std=np.array((0.229, 0.224, 0.225),dtype=np.float32)
             self.nb_classes=1000
             self.input_shape=(3,224,224)
-            self.pred_batch_size=32
+            self.pred_batch_size=8
             self.label_batch_size=4
             # self.hyperopt_attacker_name='FGSM_L2_IDP'
             # self.hyperopt_img_num=1000
@@ -116,7 +116,7 @@ class dataset_setting():
             # self.hyperopt_resolution=0.01
             # self.cnn_max_lr     = 3e-4
             # self.cnn_epochs     = 300
-            self.cnn_batch_size = 32#*16*5
+            self.cnn_batch_size = 8#*16*5
             self.label_eps_range=1
             
         else:

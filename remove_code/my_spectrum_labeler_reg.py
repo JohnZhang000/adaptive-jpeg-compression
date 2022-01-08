@@ -141,7 +141,7 @@ if __name__=='__main__':
     加载图像
     '''
     data_setting=g.dataset_setting(dataset_name)
-    dataset=g.load_dataset(dataset_name,data_setting.dataset_dir,data)
+    dataset=g.load_dataset(dataset_name,data_setting.dataset_dir,data,data_setting.hyperopt_img_val_num)
     dataloader = DataLoader(dataset, batch_size=data_setting.label_batch_size, drop_last=False, num_workers=data_setting.workers, pin_memory=True)   
     
     fmodel = PyTorchClassifier(model = model,nb_classes=data_setting.nb_classes,clip_values=(0,1),

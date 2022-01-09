@@ -221,6 +221,10 @@ if __name__=='__main__':
     
     logger.addHandler(ch)
     logger.addHandler(fh)
+
+    # ctx = torch.multiprocessing.get_context("spawn")
+    # print(torch.multiprocessing.cpu_count())
+    # pool = ctx.Pool(data_setting.device_num)    
     
     '''
     加载模型
@@ -252,7 +256,7 @@ if __name__=='__main__':
         model.train()
         for idx, (train_x,train_label) in enumerate(train_loader):
 
-            train_x,train_label=g.batch_random_attack(train_x,data_setting,fmodel,mean_std)
+            train_x,train_label=g.mp_batch_random_attack(train_x,data_setting,fmodel,mean_std)
             train_x=train_x.cuda()
             train_label=train_label.cuda()
             optimizer.zero_grad()
@@ -270,7 +274,7 @@ if __name__=='__main__':
         model.eval()
         for idx, (test_x,test_label) in enumerate(test_loader):
 
-            test_x,test_label=g.batch_random_attack(test_x,data_setting,fmodel,mean_std)
+            test_x,test_label=g.mp_batch_random_attack(test_x,data_setting,fmodel,mean_std)
             test_x=test_x.cuda()
             test_label=test_label.cuda()
             

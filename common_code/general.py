@@ -56,19 +56,25 @@ class dataset_setting():
         self.cnn_epochs     = 300
         self.cnn_batch_size = None#*16*5
         self.workers=20
+        self.device_num=2
         
         if 'cifar-10'==dataset_name:
             if 'estar-403'==self.device:
                 self.dataset_dir='/home/estar/Datasets/Cifar-10'
                 self.workers=20
+                self.device_num=2
             elif 'Jet'==self.device:
                 self.dataset_dir='/home/zhangzhuang/Datasets/Cifar-10'
                 self.workers=32
+                self.device_num=3
             elif 'QuadCopter'==self.device:
                 self.dataset_dir='/home/zhangzhuang/Datasets/Cifar-10'
                 self.workers=48
+                self.device_num=2
             elif 'ubuntu204'==self.device:
                 self.dataset_dir='/media/ubuntu204/F/Dataset/cifar-10'
+                self.workers=48
+                self.device_num=4
             else:
                 raise Exception('Wrong device')
             self.mean=np.array((0.5,0.5,0.5),dtype=np.float32)
@@ -93,14 +99,19 @@ class dataset_setting():
             if 'estar-403'==self.device:
                 self.dataset_dir='/home/estar/Datasets/ILSVRC2012-100'           # modify
                 self.workers=20
+                self.device_num=2
             elif 'Jet'==self.device:
                 self.dataset_dir='/home/zhangzhuang/Datasets/ILSVRC2012-100'
                 self.workers=32
+                self.device_num=3
             elif 'QuadCopter'==self.device:
                 self.dataset_dir='/home/zhangzhuang/Datasets/ILSVRC2012-100'
                 self.workers=48
+                self.device_num=2
             elif 'ubuntu204'==self.device:
                 self.dataset_dir='/media/ubuntu204/F/Dataset/ILSVRC2012-100'
+                self.workers=48
+                self.device_num=4
             else:
                 raise Exception('Wrong device')
             self.mean=np.array((0.485, 0.456, 0.406),dtype=np.float32)
@@ -250,6 +261,54 @@ def batch_random_attack(img_t,data_setting,fmodel,mean_std=None):
         imgs_dct=imgs_dct.transpose(0,3,1,2)
         imgs_dcts[start_idx:end_idx,...]=imgs_dct
         eps[start_idx:end_idx]=attack_eps
+
+    if not (mean_std is None):
+        imgs_dcts=(imgs_dcts-mean_std[0:3,...])/mean_std[3:6,...]
+    imgs_dcts=torch.from_numpy(imgs_dcts)
+    eps=torch.from_numpy(eps)
+    return imgs_dcts,eps
+
+def mp_single_random_attack(imgs_in,data_setting,fmodel):
+    attack_eps=data_setting.label_eps_range*(np.random.rand()+epsilon)
+    attack=FastGradientMethod(estimator=fmodel,eps=attack_eps,norm=2)
+
+    imgs_adv=attack.generate(imgs_in)
+    imgs_ycbcr=rgb_to_ycbcr(imgs_adv.transpose(0,2,3,1))
+    imgs_dct=img2dct(imgs_ycbcr)
+    imgs_dct=imgs_dct.transpose(0,3,1,2)
+    return imgs_dct,attack_eps*np.ones(imgs_in.shape[0])
+
+def mp_batch_random_attack(img_t,data_setting,fmodel,mean_std=None):
+    ctx = torch.multiprocessing.get_context("spawn")
+    pool = ctx.Pool(data_setting.device_num)
+
+    imgs=img_t.numpy()
+    imgs_dcts=np.zeros_like(imgs)
+    eps=np.ones(imgs.shape[0])
+    assert(imgs.shape[2]==imgs.shape[3])
+
+    label_batch_size=data_setting.label_batch_size
+    label_batch_num=int(np.ceil(imgs.shape[0]/data_setting.label_batch_size))
+    pool_list=[]
+    for i in range(label_batch_num):
+        start_idx=label_batch_size*i
+        end_idx=min(label_batch_size*(i+1),imgs.shape[0])
+        imgs_in=imgs[start_idx:end_idx,...]
+        res=pool.apply_async(mp_single_random_attack,
+                            args=(imgs_in,data_setting,fmodel))
+        pool_list.append(res)
+    
+        pool.close()
+    pool.join()
+
+    imgs_dcts_list=[]
+    eps_list=[]
+    for i in pool_list:
+        res = i.get()
+        imgs_dcts_list.append(res[0])
+        eps_list.append(res[1])
+    imgs_dcts=np.vstack(imgs_dcts_list)
+    eps=np.vstack(eps_list)
 
     if not (mean_std is None):
         imgs_dcts=(imgs_dcts-mean_std[0:3,...])/mean_std[3:6,...]

@@ -4,6 +4,7 @@ Created on Wed Jun 23 19:47:03 2021
 
 @author: DELL
 """
+
 import gc
 import numpy as np
 import torch
@@ -11,6 +12,9 @@ import os
 import sys
 import torch.nn as nn
 # import torch.nn.functional as F
+sys.path.append('../common_code')
+from torch.multiprocessing import Pool, Process, set_start_method
+
 
 from art.attacks.evasion import FastGradientMethod,DeepFool
 from art.attacks.evasion import CarliniL2Method,CarliniLInfMethod
@@ -33,7 +37,7 @@ from third_party.WideResNet_pytorch.wideresnet import WideResNet
 from torch.utils.data import DataLoader
 
 import json
-sys.path.append('../common_code')
+
 # from load_cifar_data import load_CIFAR_batch,load_CIFAR_train
 import general as g
 from load_cifar_data import load_CIFAR_batch,load_CIFAR_train,load_imagenet_batch,load_imagenet_filenames
@@ -60,6 +64,57 @@ def get_defended_acc(fmodel,dataloader,defenders):
             predictions = fmodel.predict(images_def)
             predictions = np.argmax(predictions,axis=1)
             cors[idx_def] += np.sum(predictions==labels)
+    return cors
+
+def get_defended_attacked_acc_per_batch(fmodel,attackers,defenders,defender_names,images,labels):
+    cors=np.zeros((len(attackers)+1,len(defenders)+1))
+    for j in range(len(attackers)+1):
+            images_cp=images.copy()
+            labels_cp=labels.copy()
+            images_att=images.copy()
+            eps=0
+            if j>0:
+                try:
+                    eps=attackers[j-1].eps
+                except:
+                    eps=0
+                images_att  = attackers[j-1].generate(x=images_cp)
+            for k in range(len(defenders)+1):
+                    images_def = images_att.copy()
+                    images_att_trs = images_att.transpose(0,2,3,1).copy()
+                    if k>0:
+                        if 'ADAD-flip'==defender_names[k-1]:
+                            images_def,_ = defenders[k-1](images_att_trs,labels_cp,None,0)
+                        elif 'ADAD+eps-flip'==defender_names[k-1]:
+                            images_def,_ = defenders[k-1](images_att_trs,labels_cp,eps*np.ones(images_att.shape[0]),0)
+                        else:
+                            images_def,_ = defenders[k-1](images_att_trs,labels_cp)
+                        images_def=images_def.transpose(0,3,1,2)
+                    images_def_cp = images_def.copy()
+                    cors[j,k] += get_acc(fmodel,images_def_cp,labels)
+                    del images_def,images_def_cp,images_att_trs
+                    gc.collect()
+            del images_cp,images_att,labels_cp
+            gc.collect()
+    return np.expand_dims(cors,axis=0)
+
+def get_defended_attacked_acc_mp(fmodel,dataloader,attackers,defenders,defender_names):
+    pool_list=[]
+    images_list=[]
+    labels_list=[]
+    for i, (images, labels) in enumerate(tqdm(dataloader)): 
+        res=pool.apply_async(get_defended_attacked_acc_per_batch,
+                            args=(fmodel,attackers,defenders,defender_names,images.numpy(),labels.numpy()))
+        pool_list.append(res)
+    pool.close()
+    pool.join()
+
+    corss=[]
+    for i in pool_list:
+            cors = i.get()
+            corss.append(cors)
+    cors_np=np.vstack(corss).sum(axis=0)
+    cors=cors_np/len(dataloader.dataset)
     return cors
 
 def get_defended_attacked_acc(fmodel,dataloader,attackers,defenders,defender_names):
@@ -225,7 +280,9 @@ if __name__=='__main__':
     attack_names.append('DeepFool_L2')    
     attacks.append(CarliniL2Method(classifier=fmodel,batch_size=data_setting.pred_batch_size,verbose=False))
     attack_names.append('CW_L2')
-        
+
+    ctx = torch.multiprocessing.get_context("spawn")
+    pool = ctx.Pool(data_setting.device_num)    
 
     '''
     计算防御效果

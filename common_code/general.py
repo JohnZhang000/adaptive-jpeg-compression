@@ -46,7 +46,7 @@ class dataset_setting():
         self.hyperopt_attacker_name='FGSM_L2_IDP'
         self.hyperopt_img_num=1000
         self.hyperopt_img_val_num=None
-        self.hyperopt_max_evals=100                                              # modify
+        self.hyperopt_max_evals=4                                              # modify
         self.hyperopt_thresh_upper=0.1
         self.hyperopt_thresh_lower=0.0
         self.hyperopt_resolution=0.001
@@ -54,12 +54,12 @@ class dataset_setting():
         
         self.device=socket.gethostname()
         self.cnn_max_lr     = 3e-4
-        self.cnn_epochs     = 300
+        self.cnn_epochs     = 20
         self.cnn_batch_size = None#*16*5
         self.workers=20
         self.device_num=2
         self.accum_grad_num=1
-        self.train_print_epoch=256
+        self.train_print_epoch=100
         
         if 'cifar-10'==dataset_name:
             if 'estar-403'==self.device:
@@ -224,7 +224,7 @@ def load_dataset(dataset,dataset_dir,dataset_type='train',under_sample=None):
     elif 'cifar-10'==dataset:
         # normalize = transforms.Normalize(mean=np.array((0.0,0.0,0.0),dtype=np.float32),
         #                          std=np.array((1.0,1.0,1.0),dtype=np.float32))
-        ret_datasets = datasets.CIFAR10(root=dataset_dir, train=('train'==dataset_type), transform=transforms.Compose([ToTensor(),]), download=True)
+        ret_datasets = datasets.CIFAR10(root=dataset_dir, train=('train'==dataset_type), transform=transforms.Compose([ToTensor()]), download=True)
     elif 'imagenet'==dataset:
         # normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
         #                          std=[0.229, 0.224, 0.225])

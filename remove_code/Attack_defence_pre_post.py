@@ -289,7 +289,7 @@ if __name__=='__main__':
     '''            
     # 标为原始样本
  
-    accs=get_defended_attacked_acc(fmodel,dataloader,attacks,defences_pre,defences_names_pre)
+    accs=get_defended_attacked_acc_mp(fmodel,dataloader,attacks,defences_pre,defences_names_pre)
     np.save(os.path.join(saved_dir,'acc.npy'),accs)
     logger.fatal(attack_names)
     logger.fatal(defences_names_pre)

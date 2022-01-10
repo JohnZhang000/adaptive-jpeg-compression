@@ -26,6 +26,7 @@ import torchvision.transforms as transforms
 from scipy.fftpack import dct,idct
 import socket
 import PIL
+import time
 
 attack_names=['FGSM_L2_IDP','PGD_L2_IDP','CW_L2_IDP','Deepfool_L2_IDP','FGSM_Linf_IDP','PGD_Linf_IDP','CW_Linf_IDP']
 eps_L2=[0.1,1.0,10.0]
@@ -57,6 +58,8 @@ class dataset_setting():
         self.cnn_batch_size = None#*16*5
         self.workers=20
         self.device_num=2
+        self.accum_grad_num=1
+        self.train_print_epoch=256
         
         if 'cifar-10'==dataset_name:
             if 'estar-403'==self.device:
@@ -64,7 +67,7 @@ class dataset_setting():
                 self.workers=20
                 self.device_num=2
             elif 'Jet'==self.device:
-                self.dataset_dir='/home/zhangzhuang/Datasets/Cifar-10'
+                self.dataset_dir='/mnt/sdb/zhangzhuang/Datasets/Cifar-10'
                 self.workers=32
                 self.device_num=3
             elif 'QuadCopter'==self.device:
@@ -101,7 +104,7 @@ class dataset_setting():
                 self.workers=20
                 self.device_num=2
             elif 'Jet'==self.device:
-                self.dataset_dir='/home/zhangzhuang/Datasets/ILSVRC2012-100'
+                self.dataset_dir='/mnt/sdb/zhangzhuang/Datasets/ILSVRC2012-100'
                 self.workers=32
                 self.device_num=3
             elif 'QuadCopter'==self.device:
@@ -118,7 +121,7 @@ class dataset_setting():
             self.std=np.array((0.229, 0.224, 0.225),dtype=np.float32)
             self.nb_classes=1000
             self.input_shape=(3,224,224)
-            self.pred_batch_size=32
+            self.pred_batch_size=16
             self.label_batch_size=4
             # self.hyperopt_attacker_name='FGSM_L2_IDP'
             # self.hyperopt_img_num=1000
@@ -127,8 +130,9 @@ class dataset_setting():
             # self.hyperopt_resolution=0.01
             # self.cnn_max_lr     = 3e-4
             # self.cnn_epochs     = 300
-            self.cnn_batch_size = 32#*16*5
+            self.cnn_batch_size = 16#*16*5
             self.label_eps_range=1
+            self.accum_grad_num=int(256/self.cnn_batch_size)
             
         else:
             raise Exception('Wrong dataset')
@@ -249,6 +253,7 @@ def batch_random_attack(img_t,data_setting,fmodel,mean_std=None):
     label_batch_size=data_setting.label_batch_size
     label_batch_num=int(np.ceil(imgs.shape[0]/data_setting.label_batch_size))
 
+    # s_time=time.time()
     for i in range(label_batch_num):
         attack_eps=data_setting.label_eps_range*(np.random.rand()+epsilon)
         attack=FastGradientMethod(estimator=fmodel,eps=attack_eps,norm=2)
@@ -261,6 +266,8 @@ def batch_random_attack(img_t,data_setting,fmodel,mean_std=None):
         imgs_dct=imgs_dct.transpose(0,3,1,2)
         imgs_dcts[start_idx:end_idx,...]=imgs_dct
         eps[start_idx:end_idx]=attack_eps
+    # e_time=time.time()
+    # print('non-pool:%.2f'%(e_time-s_time))
 
     if not (mean_std is None):
         imgs_dcts=(imgs_dcts-mean_std[0:3,...])/mean_std[3:6,...]
@@ -272,13 +279,19 @@ def mp_single_random_attack(imgs_in,data_setting,fmodel):
     attack_eps=data_setting.label_eps_range*(np.random.rand()+epsilon)
     attack=FastGradientMethod(estimator=fmodel,eps=attack_eps,norm=2)
 
+    # s_time_in=time.time()
     imgs_adv=attack.generate(imgs_in)
+    # e_time_in=time.time()
+    # print('attack:%df'%(e_time_in-s_time_in))
+
     imgs_ycbcr=rgb_to_ycbcr(imgs_adv.transpose(0,2,3,1))
     imgs_dct=img2dct(imgs_ycbcr)
     imgs_dct=imgs_dct.transpose(0,3,1,2)
+    imgs_dct=imgs_adv
     return imgs_dct,attack_eps*np.ones(imgs_in.shape[0])
 
 def mp_batch_random_attack(img_t,data_setting,fmodel,mean_std=None):
+    # start pool
     ctx = torch.multiprocessing.get_context("spawn")
     pool = ctx.Pool(data_setting.device_num)
 
@@ -287,9 +300,11 @@ def mp_batch_random_attack(img_t,data_setting,fmodel,mean_std=None):
     eps=np.ones(imgs.shape[0])
     assert(imgs.shape[2]==imgs.shape[3])
 
+    # s_time=time.time()
     label_batch_size=data_setting.label_batch_size
     label_batch_num=int(np.ceil(imgs.shape[0]/data_setting.label_batch_size))
     pool_list=[]
+
     for i in range(label_batch_num):
         start_idx=label_batch_size*i
         end_idx=min(label_batch_size*(i+1),imgs.shape[0])
@@ -298,8 +313,10 @@ def mp_batch_random_attack(img_t,data_setting,fmodel,mean_std=None):
                             args=(imgs_in,data_setting,fmodel))
         pool_list.append(res)
     
-        pool.close()
+    pool.close()
     pool.join()
+    # e_time=time.time()
+    # print('pool:%df'%(e_time-s_time))
 
     imgs_dcts_list=[]
     eps_list=[]
@@ -308,7 +325,7 @@ def mp_batch_random_attack(img_t,data_setting,fmodel,mean_std=None):
         imgs_dcts_list.append(res[0])
         eps_list.append(res[1])
     imgs_dcts=np.vstack(imgs_dcts_list)
-    eps=np.vstack(eps_list)
+    eps=np.hstack(eps_list)
 
     if not (mean_std is None):
         imgs_dcts=(imgs_dcts-mean_std[0:3,...])/mean_std[3:6,...]

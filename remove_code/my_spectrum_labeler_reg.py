@@ -110,8 +110,8 @@ if __name__=='__main__':
     # 配置解释器参数
     if len(sys.argv)!=3:
         print('Manual Mode !!!')
-        model_vanilla_type    = 'resnet50'
-        data          = 'test'
+        model_vanilla_type    = 'vgg16_imagenet'
+        data          = 'train'
         # device        = 3
     else:
         print('Terminal Mode !!!')
@@ -141,7 +141,7 @@ if __name__=='__main__':
     加载图像
     '''
     data_setting=g.dataset_setting(dataset_name)
-    dataset=g.load_dataset(dataset_name,data_setting.dataset_dir,data)
+    dataset=g.load_dataset(dataset_name,data_setting.dataset_dir,data,data_setting.hyperopt_img_val_num)
     dataloader = DataLoader(dataset, batch_size=data_setting.label_batch_size, drop_last=False, num_workers=data_setting.workers, pin_memory=True)   
     
     fmodel = PyTorchClassifier(model = model,nb_classes=data_setting.nb_classes,clip_values=(0,1),
@@ -152,8 +152,11 @@ if __name__=='__main__':
     读取数据
     '''  
     start_time=time.time()
-    spectrums_list=[]
-    labels_list=[]
+    # spectrums_list=[]
+    # labels_list=[]
+    spectrums_np=np.zeros((len(dataset),data_setting.input_shape[1],data_setting.input_shape[2],data_setting.input_shape[0]))
+    labels_np=np.zeros(len(dataset))
+    start_idx=0
     for i, (images, labels) in enumerate(tqdm(dataloader)):
         
         images=images.numpy()
@@ -166,11 +169,15 @@ if __name__=='__main__':
         images_ycbcr=g.rgb_to_ycbcr(images_adv_tmp.transpose(0,2,3,1))
         images_dct=g.img2dct(images_ycbcr)
     
-        spectrums_list.append(images_dct)
-        labels_list.append(eps*np.ones(images_dct.shape[0]))
+        # spectrums_list.append(images_dct)
+        # labels_list.append(eps*np.ones(images_dct.shape[0]))
+        spectrums_np[start_idx:start_idx+len(labels),...]=images_dct
+        labels_np[start_idx:start_idx+len(labels),...]=attack_eps
+
+        start_idx=start_idx+len(labels)
                 
-    spectrums_np=np.vstack(spectrums_list)
-    labels_np=np.hstack(labels_list)
+    # spectrums_np=np.vstack(spectrums_list)
+    # labels_np=np.hstack(labels_list)
     
     mean_list=[]
     std_list=[]
@@ -184,6 +191,7 @@ if __name__=='__main__':
     
     # a1=(spectrums_np-mean_std[...,0:3])/mean_std[...,3:6]
     
+    np.savez_compressed(os.path.join(saved_dir_path,data+'.npy'),spectrums=spectrums_np,labels=labels_np)
     # np.save(os.path.join(saved_dir_path,'spectrums_'+data+'.npy'), spectrums_np)
     # np.save(os.path.join(saved_dir_path,'labels_'+data+'.npy'), labels_np)
     np.save(os.path.join(saved_dir_path,'mean_std_'+data+'.npy'), mean_std)

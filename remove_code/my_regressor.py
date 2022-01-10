@@ -99,9 +99,10 @@ class Net(nn.Module):
                     torch.nn.init.constant_(m.bias.data,0.0)
                     
 class spectrum_dataset(Dataset):
-    def __init__(self,data_dir,label_dir,mean_std=None):
-        self.spectrums=np.load(data_dir).astype(np.float32).transpose(0,3,1,2)
-        self.labels=np.load(label_dir).astype(np.float32)
+    def __init__(self,data_dir,mean_std=None):
+        data=np.load(data_dir)
+        self.spectrums=data['spectrums'].astype(np.float32).transpose(0,3,1,2)
+        self.labels=data['labels'].astype(np.float32)
         self.mean_std=None
         if mean_std:
             self.mean_std=np.load(mean_std).astype(np.float32).transpose(2,0,1)
@@ -181,7 +182,7 @@ if __name__=='__main__':
     # 配置解释器参数
     if len(sys.argv)!=2:
         print('Manual Mode !!!')  
-        model_type    = 'resnet50_imagenet'
+        model_type    = 'vgg16_imagenet'
         # device     = 3
         flag_manual_mode = 1
     else:
@@ -203,8 +204,8 @@ if __name__=='__main__':
     cnn_batch_size = data_setting.cnn_batch_size
     
     mean_std=data_dir+'/mean_std_train.npy'
-    train_dataset = spectrum_dataset(data_dir+'/spectrums_train.npy',data_dir+'/labels_train.npy',mean_std)
-    test_dataset  = spectrum_dataset(data_dir+'/spectrums_val.npy',data_dir+'/labels_val.npy',mean_std) 
+    train_dataset = spectrum_dataset(data_dir+'/train.npy.npz',mean_std)
+    test_dataset  = spectrum_dataset(data_dir+'/val.npy.npz',mean_std) 
     train_loader = DataLoader(train_dataset, batch_size=cnn_batch_size,shuffle=True,num_workers=data_setting.workers, pin_memory=True)
     test_loader = DataLoader(test_dataset, batch_size=cnn_batch_size,num_workers=data_setting.workers, pin_memory=True)       
 
@@ -243,14 +244,15 @@ if __name__=='__main__':
             # label_np = np.zeros((train_label.shape[0], 10))
             train_x=train_x.cuda()
             train_label=train_label.cuda()
-            optimizer.zero_grad()
             predict_y = model(train_x.float())
             loss = cost(predict_y, train_label)
-            if idx % 10 == 0:
-                logger.fatal('[Epoch]:{}, idx: {}, loss: {}'.format(_epoch, idx, loss.detach().cpu().numpy().sum().item()))
+            loss=loss/data_setting.accum_grad_num
             loss.backward()
-            optimizer.step()
-            torch.cuda.empty_cache()
+            if 0==(idx+1)%data_setting.accum_grad_num:
+                optimizer.step()
+                optimizer.zero_grad()
+            if idx % data_setting.train_print_epoch == 0:
+                logger.fatal('[Epoch]:{}, idx: {}, loss: {}'.format(_epoch, idx, loss.detach().cpu().numpy().sum().item()))
     
         correct = 0
         sum_loss = 0
@@ -264,7 +266,7 @@ if __name__=='__main__':
             label_np = test_label#.numpy()
             test_loss=cost(predict_y, label_np)
             sum_loss+=test_loss.detach().cpu().numpy()
-            torch.cuda.empty_cache()
+            # torch.cuda.empty_cache()
             
         is_best = sum_loss<best_loss
         ave_loss=sum_loss / (idx+1)

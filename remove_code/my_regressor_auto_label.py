@@ -182,7 +182,7 @@ if __name__=='__main__':
     # 配置解释器参数
     if len(sys.argv)!=2:
         print('Manual Mode !!!')  
-        model_type    = 'allconv'
+        model_type    = 'vgg16_imagenet'
         # device     = 3
         flag_manual_mode = 1
     else:
@@ -274,7 +274,7 @@ if __name__=='__main__':
         model.eval()
         for idx, (test_x,test_label) in enumerate(test_loader):
 
-            test_x,test_label=g.mp_batch_random_attack(test_x,data_setting,fmodel,mean_std)
+            test_x,test_label=g.batch_random_attack(test_x,data_setting,fmodel,mean_std)
             test_x=test_x.cuda()
             test_label=test_label.cuda()
             

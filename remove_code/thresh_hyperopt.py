@@ -35,6 +35,51 @@ def get_acc(fmodel,images,labels):
     cors = np.sum(predictions==labels)
     return cors
 
+def get_defended_attacked_acc_per_batch(fmodel,attack_eps,defenders,defender_names,imgs_in,labels_in):
+    cors=np.zeros((len(attack_eps)+1,len(defenders)+1))
+    for i in range(imgs_in.shape[0]):
+            images_att=imgs_in[i,...].copy()
+            labels=labels_in
+            for k in range(len(defenders)+1):
+                    images_def = images_att.copy()
+                    if k>0:
+                        if 'ADAD-flip'==defender_names[k-1]:
+                            images_def,_ = defenders[k-1](images_def.transpose(0,2,3,1).copy(),labels.copy(),None,0)
+                        elif 'ADAD+eps-flip'==defender_names[k-1]:
+                            images_def,_ = defenders[k-1](images_def.transpose(0,2,3,1).copy(),labels.copy(),attack_eps[i]*np.ones(images_def.shape[0]),0)
+                        else:
+                            images_def,_ = defenders[k-1](images_def.transpose(0,2,3,1).copy(),labels.copy())
+                        images_def=images_def.transpose(0,3,1,2)
+                    images_def_cp = images_def.copy()
+                    cors[i,k] += get_acc(fmodel,images_def_cp,labels)
+                    del images_def,images_def_cp
+    cors=cors/imgs_in.shape[1]
+    return np.expand_dims(cors,axis=0)
+
+def get_defended_attacked_acc_mp(fmodel,attack_eps,defenders,defender_names,imgs_in,labels_in,batch_size):
+    # start pool
+    ctx = torch.multiprocessing.get_context("spawn")
+    pool = ctx.Pool(data_setting.device_num)
+
+    batch_num=int(np.ceil(imgs_in.shape[1]/batch_size))
+    pool_list=[]
+    for j in range(batch_num):
+        start_idx=j*batch_size
+        end_idx=min((j+1)*batch_size,imgs_in.shape[1])
+        res=pool.apply_async(get_defended_attacked_acc_per_batch,
+                        args=(fmodel,attack_eps,defenders,defender_names,imgs_in[:,start_idx:end_idx,...].copy(),labels_in[start_idx:end_idx]))
+    pool_list.append(res)
+    pool.close()
+    pool.join()
+
+    corss=[]
+    for i in pool_list:
+            cors = i.get()
+            corss.append(cors)
+    cors_np=np.vstack(corss).sum(axis=0)
+    # cors=cors_np/len(dataloader.dataset)
+    return cors_np
+
 def get_defended_attacked_acc(fmodel,attack_eps,defenders,defender_names,imgs_in,labels_in,batch_size):
     cors=np.zeros((imgs_in.shape[0],len(defenders)+1))
     
@@ -218,7 +263,7 @@ if __name__=='__main__':
     # 配置解释器参数
     if len(sys.argv)!=2:
         print('Manual Mode !!!')
-        model_vanilla_type    = 'allconv' 
+        model_vanilla_type    = 'vgg16_imagenet' 
     else:
         print('Terminal Mode !!!')
         model_vanilla_type  = str(sys.argv[1])
@@ -234,7 +279,6 @@ if __name__=='__main__':
     if not os.path.exists(saved_dir):
         os.makedirs(saved_dir)
         
-
     '''
     初始化
     '''

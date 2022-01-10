@@ -46,7 +46,7 @@ do
 
             echo  ''                                     |tee -a $log_name
             echo  'Thresh:            '                  |tee -a $log_name
-            CUDA_VISIBLE_DEVICES=$devices nohup python ../remove_code/thresh_hyperopt.py $model |tee -a $log_name
+            # CUDA_VISIBLE_DEVICES=$devices nohup python ../remove_code/thresh_hyperopt.py $model |tee -a $log_name
             echo  'end_time:       '$(date +%Y%m%d_%H%M%S)$a                    |tee -a $log_name
        
             echo  ''                                     |tee -a $log_name

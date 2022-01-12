@@ -237,7 +237,7 @@ def attack_init(fmodel,dataloader,data_setting):
     attacks=[]
     attack_names=[]
     attack_name='FGSM_L2_IDP'
-    eps=[0.1,0.5,1.0]
+    eps=data_setting.eps_L2#[0.1,0.5,1.0]
     # eps=[10.0,1.0,0.5,0.1]
     for i in range(len(eps)):
            # attacks.append(FastGradientMethod(estimator=fmodel,eps=eps[i],norm=2,eps_step=eps[i],batch_size=data_setting.pred_batch_size))

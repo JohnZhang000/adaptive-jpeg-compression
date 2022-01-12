@@ -111,7 +111,7 @@ if __name__=='__main__':
     if len(sys.argv)!=3:
         print('Manual Mode !!!')
         model_vanilla_type    = 'vgg16_imagenet'
-        data          = 'train'
+        data          = 'val'
         # device        = 3
     else:
         print('Terminal Mode !!!')
@@ -162,7 +162,7 @@ if __name__=='__main__':
         images=images.numpy()
         labels=labels.numpy()
         
-        attack_eps=data_setting.label_eps_range*np.random.rand()
+        attack_eps=data_setting.label_eps_range/3*np.abs(np.random.randn(1)[0])#data_setting.label_eps_range*#np.random.rand()
         attack,eps=g.select_attack(fmodel,data_setting.hyperopt_attacker_name, attack_eps)                
         images_adv_tmp=attack.generate(x=images,y=labels)
         

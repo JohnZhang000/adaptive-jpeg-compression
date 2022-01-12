@@ -44,6 +44,7 @@ from load_cifar_data import load_CIFAR_batch,load_CIFAR_train,load_imagenet_batc
 import pickle
 from tqdm import tqdm
 import logging
+torch.multiprocessing.set_sharing_strategy('file_system')
 
 def append_attack(attacks,attack,model,epss):
     for i in range(len(epss)):
@@ -162,7 +163,7 @@ if __name__=='__main__':
     # 配置解释器参数
     if len(sys.argv)!=2:
         print('Manual Mode !!!')
-        model_vanilla_type    = 'allconv'
+        model_vanilla_type    = 'vgg16_imagenet'
     else:
         print('Terminal Mode !!!')
         model_vanilla_type    = sys.argv[1]
@@ -188,7 +189,7 @@ if __name__=='__main__':
     logger.addHandler(ch)
     logger.addHandler(fh)
     
-    logger.fatal(('\n----------label record-----------'))
+    logger.fatal(('\n----------defense record-----------'))
     
     '''
     加载cifar-10图像
@@ -199,7 +200,7 @@ if __name__=='__main__':
     else:
         dataset_name='cifar-10'
     data_setting=g.dataset_setting(dataset_name)
-    dataset=g.load_dataset(dataset_name,data_setting.dataset_dir,'val')
+    dataset=g.load_dataset(dataset_name,data_setting.dataset_dir,'val',data_setting.hyperopt_img_val_num)
     dataloader = DataLoader(dataset, batch_size=data_setting.pred_batch_size, drop_last=False, num_workers=data_setting.workers, pin_memory=True)    
 
     '''
@@ -219,22 +220,22 @@ if __name__=='__main__':
 
     defences_pre=[]
     defences_names_pre=[]
-    defences_pre.append(JpegCompression(clip_values=(0,1),quality=25,channels_first=False))
-    defences_names_pre.append('JPEG')
-    defences_pre.append(GaussianAugmentation(sigma=0.01,augmentation=False))
-    defences_names_pre.append('GauA')
-    defences_pre.append(SpatialSmoothing())
-    defences_names_pre.append('BDR')
+    # defences_pre.append(JpegCompression(clip_values=(0,1),quality=25,channels_first=False))
+    # defences_names_pre.append('JPEG')
+    # defences_pre.append(GaussianAugmentation(sigma=0.01,augmentation=False))
+    # defences_names_pre.append('GauA')
+    # defences_pre.append(SpatialSmoothing())
+    # defences_names_pre.append('BDR')
     defences_pre.append(defend_webpf_wrap)
     defences_names_pre.append('WEBPF')
-    defences_pre.append(defend_rdg_wrap)
-    defences_names_pre.append('RDG')
+    # defences_pre.append(defend_rdg_wrap)
+    # defences_names_pre.append('RDG')
     defences_pre.append(defend_fd_wrap)
     defences_names_pre.append('FD')
-    defences_pre.append(defend_shield_wrap)
-    defences_names_pre.append('SHIELD')
-    # defences_pre.append(defend_FD_ago_warp)
-    # defences_names_pre.append('FD_ago')
+    # defences_pre.append(defend_shield_wrap)
+    # defences_names_pre.append('SHIELD')
+    # # defences_pre.append(defend_FD_ago_warp)
+    # # defences_names_pre.append('FD_ago')
     
     table_pkl=os.path.join(saved_dir,'table_dict.pkl')
     gc_model_dir=os.path.join(saved_dir,'model_best.pth.tar')
@@ -267,19 +268,19 @@ if __name__=='__main__':
     '''
     attacks=[]
     attack_names=[]
-    eps_L2=[0.1,0.5,1.0]                                                # modify
+    eps_L2=data_setting.eps_L2                                              # modify
     # eps_L2=[0.1,10.0]
     
     for i in range(len(eps_L2)):
           attacks.append(FastGradientMethod(estimator=fmodel,eps=eps_L2[i],norm=2,eps_step=eps_L2[i]))
           attack_names.append('FGSM_L2_'+str(eps_L2[i]))    
-    for i in range(len(eps_L2)):
-          attacks.append(ProjectedGradientDescent(estimator=fmodel,eps=eps_L2[i],norm=2,batch_size=data_setting.pred_batch_size,verbose=False))
-          attack_names.append('PGD_L2_'+str(eps_L2[i]))    
-    attacks.append(DeepFool(classifier=fmodel,batch_size=data_setting.pred_batch_size,verbose=False))
-    attack_names.append('DeepFool_L2')    
-    attacks.append(CarliniL2Method(classifier=fmodel,batch_size=data_setting.pred_batch_size,verbose=False))
-    attack_names.append('CW_L2')
+    # for i in range(len(eps_L2)):
+    #       attacks.append(ProjectedGradientDescent(estimator=fmodel,eps=eps_L2[i],norm=2,batch_size=data_setting.pred_batch_size,verbose=False))
+    #       attack_names.append('PGD_L2_'+str(eps_L2[i]))    
+    # attacks.append(DeepFool(classifier=fmodel,batch_size=data_setting.pred_batch_size,verbose=False))
+    # attack_names.append('DeepFool_L2')    
+    # attacks.append(CarliniL2Method(classifier=fmodel,batch_size=data_setting.pred_batch_size,verbose=False))
+    # attack_names.append('CW_L2')
 
     ctx = torch.multiprocessing.get_context("spawn")
     pool = ctx.Pool(data_setting.device_num)    
@@ -289,7 +290,7 @@ if __name__=='__main__':
     '''            
     # 标为原始样本
  
-    accs=get_defended_attacked_acc_mp(fmodel,dataloader,attacks,defences_pre,defences_names_pre)
+    accs=get_defended_attacked_acc(fmodel,dataloader,attacks,defences_pre,defences_names_pre)
     np.save(os.path.join(saved_dir,'acc.npy'),accs)
     logger.fatal(attack_names)
     logger.fatal(defences_names_pre)

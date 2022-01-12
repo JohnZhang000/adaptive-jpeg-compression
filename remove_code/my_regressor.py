@@ -14,7 +14,8 @@ import matplotlib.pyplot as plt
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 from torch.nn import CrossEntropyLoss,MSELoss
-from torch.optim import SGD,Adam
+from torch.nn.utils import clip_grad_norm_
+from torch.optim import SGD,Adam,lr_scheduler
 import os
 import time
 import sys
@@ -29,7 +30,7 @@ from models.resnet_reg import resnet50,resnet18
 from pytorchtools import EarlyStopping
 sys.path.append('../common_code')
 import general as g
-
+torch.multiprocessing.set_sharing_strategy('file_system')
 
 class Net(nn.Module):
     def __init__(self):
@@ -206,8 +207,8 @@ if __name__=='__main__':
     mean_std=data_dir+'/mean_std_train.npy'
     train_dataset = spectrum_dataset(data_dir+'/train.npy.npz',mean_std)
     test_dataset  = spectrum_dataset(data_dir+'/val.npy.npz',mean_std) 
-    train_loader = DataLoader(train_dataset, batch_size=cnn_batch_size,shuffle=True,num_workers=data_setting.workers, pin_memory=True)
-    test_loader = DataLoader(test_dataset, batch_size=cnn_batch_size,num_workers=data_setting.workers, pin_memory=True)       
+    train_loader = DataLoader(train_dataset, batch_size=cnn_batch_size,shuffle=True,num_workers=0, pin_memory=True)
+    test_loader = DataLoader(test_dataset, batch_size=cnn_batch_size,num_workers=0, pin_memory=True)       
 
     
     logger=logging.getLogger(name='r')
@@ -233,12 +234,17 @@ if __name__=='__main__':
     model.init_weights()
     model = torch.nn.DataParallel(model).cuda()
     optimizer = Adam(model.parameters(),lr=cnn_max_lr,weight_decay=1e-4)
+    # optimizer = SGD(model.parameters(),lr=cnn_max_lr, momentum=0.9,weight_decay=1e-4)
+    # scheduler = lr_scheduler.OneCycleLR(optimizer,max_lr=cnn_max_lr,
+    #                                     total_steps=int(cnn_epochs*len(train_loader)/data_setting.accum_grad_num), 
+    #                                     verbose=False)
     cost = my_loss#MSELoss(reduction='mean')#CrossEntropyLoss()
     epoch = cnn_epochs
     best_loss = 100000000
     early_stoper=EarlyStopping(patience=10, verbose=False, delta=0, trace_func=logger.fatal)
     
     for _epoch in range(epoch):
+        loss_prt=0
         model.train()
         for idx, (train_x, train_label) in enumerate(train_loader):
             # label_np = np.zeros((train_label.shape[0], 10))
@@ -246,13 +252,19 @@ if __name__=='__main__':
             train_label=train_label.cuda()
             predict_y = model(train_x.float())
             loss = cost(predict_y, train_label)
-            loss=loss/data_setting.accum_grad_num
+            # loss = loss/data_setting.accum_grad_num
+            loss_prt = loss.detach().cpu().numpy()
             loss.backward()
             if 0==(idx+1)%data_setting.accum_grad_num:
+                if (idx+1) % (data_setting.train_print_epoch*data_setting.accum_grad_num) == 0:
+                    lr_show=optimizer.state_dict()['param_groups'][0]['lr']#scheduler.get_lr()[0]
+                    logger.fatal('[Epoch]:{}, idx: {}, loss: {}, lr: {}'.format(_epoch, idx, loss_prt,lr_show))
+                clip_grad_norm_(model.parameters(),max_norm=20,norm_type=2)
                 optimizer.step()
                 optimizer.zero_grad()
-            if idx % data_setting.train_print_epoch == 0:
-                logger.fatal('[Epoch]:{}, idx: {}, loss: {}'.format(_epoch, idx, loss.detach().cpu().numpy().sum().item()))
+                # scheduler.step()
+                model.zero_grad()
+                loss_prt = 0
     
         correct = 0
         sum_loss = 0
@@ -265,11 +277,15 @@ if __name__=='__main__':
             predict_y = model(test_x.float()).detach()
             label_np = test_label#.numpy()
             test_loss=cost(predict_y, label_np)
+            # test_loss=test_loss/data_setting.accum_grad_num
             sum_loss+=test_loss.detach().cpu().numpy()
             # torch.cuda.empty_cache()
-            
-        is_best = sum_loss<best_loss
-        ave_loss=sum_loss / (idx+1)
+
+        ave_loss=sum_loss / (idx+1)    
+        is_best = ave_loss<best_loss
+        if is_best:
+            best_loss=ave_loss
+        
         logger.fatal('[Epoch]:{}, ave_loss: {:.8f}'.format(_epoch, ave_loss))
         # torch.save(model, 'models/mnist_{:.4f}.pkl'.format(ave_loss))
         save_checkpoint({'epoch':_epoch+1,
@@ -280,19 +296,19 @@ if __name__=='__main__':
         if early_stoper.early_stop:
             break
     
-    preds=[]
-    gts=[]
-    model.eval()
-    for idx, (test_x, test_label) in enumerate(test_loader):
-        test_x=test_x.cuda()
-        predict_y = model(test_x.float()).detach()
-        preds.append(predict_y.detach().cpu().numpy())
-        gts.append(test_label.numpy())
+    # preds=[]
+    # gts=[]
+    # model.eval()
+    # for idx, (test_x, test_label) in enumerate(test_loader):
+    #     test_x=test_x.cuda()
+    #     predict_y = model(test_x.float()).detach()
+    #     preds.append(predict_y.detach().cpu().numpy())
+    #     gts.append(test_label.numpy())
     
-    gts_np=np.hstack(gts)
-    preds_np=np.hstack(preds)
-    a=np.hstack((gts_np.reshape(-1,1),preds_np.reshape(-1,1)))
-    a1=a[:,1]-a[:,0]
-    a2=(a1)/a[:,0]
+    # gts_np=np.hstack(gts)
+    # preds_np=np.hstack(preds)
+    # a=np.hstack((gts_np.reshape(-1,1),preds_np.reshape(-1,1)))
+    # a1=a[:,1]-a[:,0]
+    # a2=(a1)/a[:,0]
     # ave_loss=sum_loss / len(test_loader.dataset)
     # print('ave_loss: {:.4f}'.format(ave_loss))

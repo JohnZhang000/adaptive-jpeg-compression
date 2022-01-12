@@ -46,20 +46,21 @@ class dataset_setting():
         self.hyperopt_attacker_name='FGSM_L2_IDP'
         self.hyperopt_img_num=1000
         self.hyperopt_img_val_num=None
-        self.hyperopt_max_evals=4                                              # modify
-        self.hyperopt_thresh_upper=0.1
+        self.hyperopt_max_evals=100                                              # modify
+        self.hyperopt_thresh_upper=1.0
         self.hyperopt_thresh_lower=0.0
         self.hyperopt_resolution=0.001
         self.early_stoper_patience=10
         
         self.device=socket.gethostname()
-        self.cnn_max_lr     = 3e-4
-        self.cnn_epochs     = 20
+        self.cnn_max_lr     = 1e-4
+        self.cnn_epochs     = 100
         self.cnn_batch_size = None#*16*5
         self.workers=20
         self.device_num=2
         self.accum_grad_num=1
-        self.train_print_epoch=100
+        self.train_print_epoch=10
+        self.eps_L2=[0.1,0.5,1.0]
         
         if 'cifar-10'==dataset_name:
             if 'estar-403'==self.device:
@@ -91,10 +92,11 @@ class dataset_setting():
             # self.hyperopt_img_val_num=0.1
             # self.hyperopt_max_evals=100
             # self.hyperopt_resolution=0.01
-            # self.cnn_max_lr     = 3e-4
+            self.cnn_max_lr     = 1e-3
             # self.cnn_epochs     = 300
             self.cnn_batch_size = 256#*16*5
             self.label_eps_range=1
+            self.eps_L2=[0.1,0.5,1.0]
             
             
             
@@ -128,11 +130,13 @@ class dataset_setting():
             self.hyperopt_img_val_num=0.2
             # self.hyperopt_max_evals=4
             # self.hyperopt_resolution=0.01
-            # self.cnn_max_lr     = 3e-4
+            self.cnn_max_lr     = 1e-7
             # self.cnn_epochs     = 300
             self.cnn_batch_size = 8#*16*5
-            self.label_eps_range=1
+            self.label_eps_range=10
             self.accum_grad_num=int(256/self.cnn_batch_size)
+            self.eps_L2=[1,5,10]
+            
             
         else:
             raise Exception('Wrong dataset')

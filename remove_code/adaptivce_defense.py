@@ -15,13 +15,14 @@ import torch
 import sys
 sys.path.append('../common_code')
 import general as g
-
+import multiprocessing
 # This file contains the defense methods compared in the paper.
 # The FD algorithm's source code is from:
 #   https://github.com/zihaoliu123/Feature-Distillation-DNN-Oriented-JPEG-Compression-Against-Adversarial-Examples/blob/master/utils/feature_distillation.py
 # The FD algorithm is refer to the paper:
 #   https://arxiv.org/pdf/1803.05787.pdf
 # Some of the defense methods' code refering to Anish & Carlini's github: https://github.com/anishathalye/obfuscated-gradients
+
 
 
 class adaptive_defender:
@@ -123,17 +124,7 @@ class adaptive_defender:
         return tables
            
         
-    def scale_table(self,table_now,Q=50):
-        # Q =50
-        # q_table0=q_table0*Q+np.ones_like(q_table0)
-        if Q<=50:
-            S=5000/Q
-        else:
-            S=200-2*Q
 
-        q_table=np.floor((S*table_now+50)/100)
-        q_table[q_table==0]=1
-        return q_table
     
 
     
@@ -291,28 +282,12 @@ def Cal_channel_wise_qtable(clean_imgs,adv_imgs,thresh):
                     block_cln = np.reshape(block_cln,(num,num))
                     block_adv = np.reshape(block_adv,(num,num))
                     
-                    # block_cln_dct = g.dct2(block_cln)
-                    # block_adv_dct = g.dct2(block_adv)
-                    
                     block_cln_tmp = np.log(1+np.abs(g.dct2(block_cln)))
                     block_adv_tmp = np.log(1+np.abs(g.dct2(block_adv)))
-                    
-                    # block_cln_tmp = np.abs(dct2(block_cln))
-                    # block_adv_tmp = np.abs(dct2(block_adv))
                     
                     block_cln_all[j].append(np.expand_dims(block_cln_tmp,axis=0))
                     block_adv_all[j].append(np.expand_dims(block_adv_tmp,axis=0))
                     block_diff = np.abs(block_adv_tmp-block_cln_tmp)
-                    # block_diff = block_diff/(block_cln+1e-10)
-                    # block_diff = cv2.dct(block_adv-block_cln)
-                    # block_diff = np.abs(block_diff/(dct2(block_cln)+1e-10))
-                    
-                    
-                    # block_tmp=np.fft.fft2(block_adv)-np.fft.fft2(block_cln)
-                    # block_diff=np.log(1+np.sqrt(block_tmp.real**2+block_tmp.imag**2))                                    
-                    
-                    # block_cln_all=block_cln_all+block_cln_dct
-                    # block_adv_all=block_adv_all+block_adv_dct
                     
                     block_diff_all[i,...,j]=block_diff_all[i,...,j]+block_diff
                     xmax=np.argmax(block_diff)
@@ -331,14 +306,101 @@ def Cal_channel_wise_qtable(clean_imgs,adv_imgs,thresh):
     block_diff_out=np.ones((num,num,c))
     for j in range(block_diff_all.shape[-1]):
         
+        # if j>0:
+        #     continue
         block_cln_tmp=np.vstack(block_cln_all[j])
         block_cln_tmp=block_cln_tmp.mean(axis=0)
-        abs_thresh=block_cln_tmp.max()*thresh[j]
         
-        block_tmp=block_diff_all[...,j]      
+        abs_thresh=thresh[j]#block_cln_tmp.max()*thresh[j]
+        
+        block_tmp=block_diff_all[...,j]/block_cln_tmp
+    
+        block_tmp[block_tmp>abs_thresh]=100
+        block_tmp[block_tmp<abs_thresh]=1
+        block_diff_out[...,j]=block_tmp.mean(axis=0)
+        
+        
+    # block_diff_all=block_diff_all/(horizontal_blocks_num*vertical_blocks_num)
+    # block_diff_out=np.ones((num,num,c))
+    # for j in range(block_diff_all.shape[-1]):
+        
+    #     block_cln_tmp=np.vstack(block_cln_all[j])
+    #     block_cln_tmp=block_cln_tmp.mean(axis=0)
+    #     abs_thresh=block_cln_tmp.max()*thresh[j]
+        
+    #     block_tmp=block_diff_all[...,j]
+    
+    #     block_tmp[block_tmp>abs_thresh]=100
+    #     block_tmp[block_tmp<abs_thresh]=1
+    #     block_diff_out[...,j]=block_tmp.mean(axis=0)
+    return block_diff_out,Q,np.vstack(block_cln_all),np.vstack(block_adv_all)
+
+
+def cal_block_diff(clean_imgs,adv_imgs,vertical_blocks_num,horizontal_blocks_num,i,j,k,m):
+    block_cln=clean_imgs[i,vertical_blocks_num*k:vertical_blocks_num*(k+1),horizontal_blocks_num*m:horizontal_blocks_num*(m+1),j]
+    block_adv=adv_imgs[i,vertical_blocks_num*k:vertical_blocks_num*(k+1),horizontal_blocks_num*m:horizontal_blocks_num*(m+1),j]
+    
+    block_cln = np.reshape(block_cln,(num,num))
+    block_adv = np.reshape(block_adv,(num,num))
+    
+    block_cln_tmp = np.log(1+np.abs(g.dct2(block_cln)))
+    block_adv_tmp = np.log(1+np.abs(g.dct2(block_adv)))
+    return block_cln_tmp,block_adv_tmp,block_adv_tmp-block_cln_tmp
+    
+    
+def Cal_channel_wise_qtable_mp(clean_imgs,adv_imgs,thresh):
+    n = clean_imgs.shape[0]
+    h = clean_imgs.shape[1]
+    w = clean_imgs.shape[2]
+    c = clean_imgs.shape[3]
+    num=8
+    
+    Q0=np.zeros((c,num,num))
+    block_diff_all=np.zeros((n,num,num,c))
+
+    block_cln_all=[[] for _ in range(c)]
+    block_adv_all=[[] for _ in range(c)]
+    block_diff_all=[]
+    block_nums=0
+    
+    horizontal_blocks_num = int(w / num)
+    vertical_blocks_num = int(h / num)
+    # n_block_cln = np.split(clean_imgs,n,axis=0)
+    # n_block_adv = np.split(adv_imgs,n,axis=0)
+
+    for j in range(c):
+        pool=multiprocessing.Pool(processes=20)
+        pool_list=[]
+
+        for i in range(n):
+            for k in range(vertical_blocks_num):
+                for m in range(horizontal_blocks_num):
+                    res = pool.apply_async(cal_block_diff,
+                                           (clean_imgs,adv_imgs,vertical_blocks_num,horizontal_blocks_num,i,j,k,m))
+                    pool_list.append(res)
+        pool.close()
+        pool.join()
+    
+        for i in pool_list:
+            res = i.get()
+            block_cln_all[j].append(res[0])
+            block_adv_all[j].append(res[1])
+            block_diff_all.append(res[2])
+    
+    # block_cln_all_mean=np.vstack(block_cln_all).mean(axis=0).reshape([8,8])
+    # block_adv_all_mean=np.vstack(block_adv_all).mean(axis=0).reshape([8,8])
+    block_diff_all=block_diff_all/(horizontal_blocks_num*vertical_blocks_num)
+    block_diff_out=np.ones((num,num,c))
+    for j in range(block_diff_all.shape[-1]):
+        
+        block_cln_tmp=np.vstack(block_cln_all[j])
+        block_cln_tmp=block_cln_tmp.mean(axis=0)
+        
+        abs_thresh=thresh[j]#block_cln_tmp.max()*thresh[j]
+        
+        block_tmp=block_diff_all[...,j]/block_cln_tmp
     
         block_tmp[block_tmp>abs_thresh]=100
         block_tmp[block_tmp<abs_thresh]=1
         block_diff_out[...,j]=block_tmp.mean(axis=0)
     return block_diff_out,Q,np.vstack(block_cln_all),np.vstack(block_adv_all)
-        

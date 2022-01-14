@@ -52,7 +52,8 @@ def append_attack(attacks,attack,model,epss):
         
         
 def get_acc(fmodel,images,labels):
-    predictions = fmodel.predict(images)
+    with torch.no_grad():
+        predictions = fmodel.predict(images)
     predictions = np.argmax(predictions,axis=1)
     cors = np.sum(predictions==labels)
     return cors
@@ -142,6 +143,8 @@ def get_defended_attacked_acc(fmodel,dataloader,attackers,defenders,defender_nam
                             images_def,_ = defenders[k-1](images_att_trs,labels_cp,None,0)
                         elif 'ADAD+eps-flip'==defender_names[k-1]:
                             images_def,_ = defenders[k-1](images_att_trs,labels_cp,eps*np.ones(images_att.shape[0]),0)
+                        elif 'ADAD+eps+flip'==defender_names[k-1]:
+                            images_def,_ = defenders[k-1](images_att_trs,labels_cp,eps*np.ones(images_att.shape[0]),1)
                         else:
                             images_def,_ = defenders[k-1](images_att_trs,labels_cp)
                         images_def=images_def.transpose(0,3,1,2)
@@ -220,20 +223,20 @@ if __name__=='__main__':
 
     defences_pre=[]
     defences_names_pre=[]
-    # defences_pre.append(JpegCompression(clip_values=(0,1),quality=25,channels_first=False))
-    # defences_names_pre.append('JPEG')
-    # defences_pre.append(GaussianAugmentation(sigma=0.01,augmentation=False))
-    # defences_names_pre.append('GauA')
-    # defences_pre.append(SpatialSmoothing())
-    # defences_names_pre.append('BDR')
+    defences_pre.append(JpegCompression(clip_values=(0,1),quality=25,channels_first=False))
+    defences_names_pre.append('JPEG')
+    defences_pre.append(GaussianAugmentation(sigma=0.01,augmentation=False))
+    defences_names_pre.append('GauA')
+    defences_pre.append(SpatialSmoothing())
+    defences_names_pre.append('BDR')
     defences_pre.append(defend_webpf_wrap)
     defences_names_pre.append('WEBPF')
-    # defences_pre.append(defend_rdg_wrap)
-    # defences_names_pre.append('RDG')
+    defences_pre.append(defend_rdg_wrap)
+    defences_names_pre.append('RDG')
     defences_pre.append(defend_fd_wrap)
     defences_names_pre.append('FD')
-    # defences_pre.append(defend_shield_wrap)
-    # defences_names_pre.append('SHIELD')
+    defences_pre.append(defend_shield_wrap)
+    defences_names_pre.append('SHIELD')
     # # defences_pre.append(defend_FD_ago_warp)
     # # defences_names_pre.append('FD_ago')
     
@@ -260,6 +263,8 @@ if __name__=='__main__':
     defences_names_pre.append('ADAD-flip')
     defences_pre.append(adaptive_defender.defend)
     defences_names_pre.append('ADAD+eps-flip')
+    defences_pre.append(adaptive_defender.defend)
+    defences_names_pre.append('ADAD+eps+flip')
 
     
     

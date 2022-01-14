@@ -49,7 +49,7 @@ class dataset_setting():
         self.hyperopt_max_evals=100                                              # modify
         self.hyperopt_thresh_upper=1.0
         self.hyperopt_thresh_lower=0.0
-        self.hyperopt_resolution=0.001
+        self.hyperopt_resolution=0.01
         self.early_stoper_patience=10
         
         self.device=socket.gethostname()
@@ -102,7 +102,7 @@ class dataset_setting():
             
         elif 'imagenet'==dataset_name:
             if 'estar-403'==self.device:
-                self.dataset_dir='/home/estar/Datasets/ILSVRC2012-100'           # modify
+                self.dataset_dir='/home/estar/Datasets/ILSVRC2012-5'           # modify
                 self.workers=20
                 self.device_num=2
             elif 'Jet'==self.device:
@@ -127,7 +127,7 @@ class dataset_setting():
             self.label_batch_size=4
             # self.hyperopt_attacker_name='FGSM_L2_IDP'
             # self.hyperopt_img_num=1000
-            self.hyperopt_img_val_num=0.2
+            self.hyperopt_img_val_num=0.1
             # self.hyperopt_max_evals=4
             # self.hyperopt_resolution=0.01
             self.cnn_max_lr     = 1e-7
@@ -429,3 +429,35 @@ def img2dct(clean_imgs):
             block_cln_tmp = np.log(1+np.abs(dct2(ch_block_cln)))
             block_dct[i,:,:,j]=block_cln_tmp
     return block_dct
+
+table_y=np.array([
+    [16, 11, 10, 16, 24, 40, 51, 61],
+    [12, 12, 14, 19, 26, 58, 60, 55],
+    [14, 13, 16, 24, 40, 57, 69, 56],
+    [14, 17, 22, 29, 51, 87, 80, 62],
+    [18, 22, 37, 56, 68, 109,103,77],
+    [24, 35, 55, 64, 81, 104,113,92],
+    [49, 64, 78, 87, 103,121,120,101],
+    [72, 92, 95, 98, 112,100,103,99],
+    ])
+
+table_c=np.array([
+    [17, 18, 24, 47, 99, 99, 99, 99],
+    [18, 21, 26, 66, 99, 99, 99, 99],
+    [24, 66, 56, 99, 99, 99, 99, 99],
+    [47, 66, 99, 99, 99, 99, 99, 99],
+    [99, 99, 99, 99, 99, 99, 99, 99],
+    [99, 99, 99, 99, 99, 99, 99, 99],
+    [99, 99, 99, 99, 99, 99, 99, 99],
+    [99, 99, 99, 99, 99, 99, 99, 99],
+    ])
+
+def scale_table(table_now,Q=50):
+    if Q<=50:
+        S=5000/Q
+    else:
+        S=200-2*Q
+
+    q_table=np.floor((S*table_now+50)/100)
+    q_table[q_table==0]=1
+    return q_table

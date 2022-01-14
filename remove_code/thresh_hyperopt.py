@@ -10,7 +10,7 @@ from hyperopt import hp, fmin, rand, Trials
 # from hyperopt.mongoexp import MongoTrials
 
 # from tqdm import tqdm
-from adaptivce_defense import Cal_channel_wise_qtable
+from adaptivce_defense import Cal_channel_wise_qtable,Cal_channel_wise_qtable_mp
 from art.attacks.evasion import FastGradientMethod
 
 import numpy as np
@@ -29,13 +29,23 @@ sys.path.append('../common_code')
 import general as g
 # import pickle
 
+def get_acc_mp(model,mean,std,images,labels):
+    images=(images.transpose(0,2,3,1)-mean)/std
+    images=torch.from_numpy(images.transpose(0,3,1,2)).cuda()
+    with torch.no_grad():
+        predictions = model(images)
+    predictions = np.argmax(predictions.cpu().numpy(),axis=1)
+    cors = np.sum(predictions==labels)
+    return cors
+
 def get_acc(fmodel,images,labels):
-    predictions = fmodel.predict(images)
+    with torch.no_grad():
+        predictions = fmodel.predict(images)
     predictions = np.argmax(predictions,axis=1)
     cors = np.sum(predictions==labels)
     return cors
 
-def get_defended_attacked_acc_per_batch(fmodel,attack_eps,defenders,defender_names,imgs_in,labels_in):
+def get_defended_attacked_acc_per_batch(model,mean,std,attack_eps,defenders,defender_names,imgs_in,labels_in):
     cors=np.zeros((len(attack_eps)+1,len(defenders)+1))
     for i in range(imgs_in.shape[0]):
             images_att=imgs_in[i,...].copy()
@@ -51,23 +61,31 @@ def get_defended_attacked_acc_per_batch(fmodel,attack_eps,defenders,defender_nam
                             images_def,_ = defenders[k-1](images_def.transpose(0,2,3,1).copy(),labels.copy())
                         images_def=images_def.transpose(0,3,1,2)
                     images_def_cp = images_def.copy()
-                    cors[i,k] += get_acc(fmodel,images_def_cp,labels)
+                    cors[i,k] += get_acc_mp(model,mean,std,images_def_cp,labels)
                     del images_def,images_def_cp
     cors=cors/imgs_in.shape[1]
     return np.expand_dims(cors,axis=0)
 
 def get_defended_attacked_acc_mp(fmodel,attack_eps,defenders,defender_names,imgs_in,labels_in,batch_size):
+    model=fmodel.model
+    mean=fmodel.preprocessing.mean
+    std=fmodel.preprocessing.std
+    
     # start pool
     ctx = torch.multiprocessing.get_context("spawn")
-    pool = ctx.Pool(data_setting.device_num)
+    pool = ctx.Pool(data_setting.device_num*2)
 
+    # start_idx=0
+    # end_idx=batch_size
+    # get_defended_attacked_acc_per_batch(model,mean,std,attack_eps,defenders,defender_names,imgs_in[:,start_idx:end_idx,...].copy(),labels_in[start_idx:end_idx])
+    
     batch_num=int(np.ceil(imgs_in.shape[1]/batch_size))
     pool_list=[]
     for j in range(batch_num):
         start_idx=j*batch_size
         end_idx=min((j+1)*batch_size,imgs_in.shape[1])
         res=pool.apply_async(get_defended_attacked_acc_per_batch,
-                        args=(fmodel,attack_eps,defenders,defender_names,imgs_in[:,start_idx:end_idx,...].copy(),labels_in[start_idx:end_idx]))
+                        args=(model,mean,std,attack_eps,defenders,defender_names,imgs_in[:,start_idx:end_idx,...].copy(),labels_in[start_idx:end_idx]))
     pool_list.append(res)
     pool.close()
     pool.join()
@@ -168,6 +186,18 @@ def cal_table(threshs,saved_dir,cln_imgs_in,adv_imgs_in,attack_eps):
         gc.collect()
     # print(table_dict[0.5])
     pickle.dump(table_dict, open(os.path.join(saved_dir,'table_dict.pkl'),'wb'))
+    
+# def cal_table_jpeg(threshs,saved_dir,cln_imgs_in,adv_imgs_in,attack_eps):
+        
+#     table_dict=dict()
+#     table_dict[0]=np.ones([8,8,3])
+#     for i in range(adv_imgs_in.shape[0]):
+#         a_qtable=np.ones([8,8,3])
+#         a_qtable[:,:,0]=g.scale_table(g.table_y,threshs[i]*100)
+#         a_qtable[:,:,1]=g.scale_table(g.table_c,threshs[i]*100)
+#         a_qtable[:,:,2]=g.scale_table(g.table_c,threshs[i]*100)
+#         table_dict[attack_eps[i+1]]=a_qtable
+#     pickle.dump(table_dict, open(os.path.join(saved_dir,'table_dict.pkl'),'wb'))
        
 def objective(args):
     
@@ -237,7 +267,12 @@ def attack_init(fmodel,dataloader,data_setting):
     attacks=[]
     attack_names=[]
     attack_name='FGSM_L2_IDP'
-    eps=data_setting.eps_L2#[0.1,0.5,1.0]
+    eps=[]#[0.1,0.5,1.0]
+    eps.append(0.1*data_setting.eps_L2[0])
+    for i in range(len(data_setting.eps_L2)):
+        # eps.append(data_setting.eps_L2[i]*0.9)
+        eps.append(data_setting.eps_L2[i]*1.0)
+        # eps.append(data_setting.eps_L2[i]*1.1)
     # eps=[10.0,1.0,0.5,0.1]
     for i in range(len(eps)):
            # attacks.append(FastGradientMethod(estimator=fmodel,eps=eps[i],norm=2,eps_step=eps[i],batch_size=data_setting.pred_batch_size))
@@ -296,7 +331,7 @@ if __name__=='__main__':
     eps.insert(0,0.0)
     # space =[hp.quniform('t0',0,0.5,resolution),hp.quniform('t1',0,1,resolution),hp.quniform('t2',0,1,resolution)]
     space =[
-            # hp.choice('t0',[0.01]),hp.choice('t1',[0.1]),hp.choice('t2',[0.1]),
+            # hp.choice('t0',[0.066]),hp.choice('t1',[0.003]),hp.choice('t2',[0.165]),
             hp.quniform('t0',data_setting.hyperopt_thresh_lower,data_setting.hyperopt_thresh_upper,data_setting.hyperopt_resolution),
             hp.quniform('t1',data_setting.hyperopt_thresh_lower,data_setting.hyperopt_thresh_upper,data_setting.hyperopt_resolution),
             hp.quniform('t2',data_setting.hyperopt_thresh_lower,data_setting.hyperopt_thresh_upper,data_setting.hyperopt_resolution),#hp.choice('t0',[0.9]),hp.choice('t1',[0.01]),hp.choice('t2',[0.01])

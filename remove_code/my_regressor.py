@@ -259,7 +259,7 @@ if __name__=='__main__':
                 if (idx+1) % (data_setting.train_print_epoch*data_setting.accum_grad_num) == 0:
                     lr_show=optimizer.state_dict()['param_groups'][0]['lr']#scheduler.get_lr()[0]
                     logger.fatal('[Epoch]:{}, idx: {}, loss: {}, lr: {}'.format(_epoch, idx, loss_prt,lr_show))
-                clip_grad_norm_(model.parameters(),max_norm=20,norm_type=2)
+                clip_grad_norm_(model.parameters(),max_norm=10,norm_type=2)
                 optimizer.step()
                 optimizer.zero_grad()
                 # scheduler.step()
@@ -269,17 +269,19 @@ if __name__=='__main__':
         correct = 0
         sum_loss = 0
         
+        torch.cuda.empty_cache()
         model.eval()
-        for idx, (test_x, test_label) in enumerate(test_loader):
-            test_x=test_x.cuda()
-            test_label=test_label.cuda()
-            
-            predict_y = model(test_x.float()).detach()
-            label_np = test_label#.numpy()
-            test_loss=cost(predict_y, label_np)
-            # test_loss=test_loss/data_setting.accum_grad_num
-            sum_loss+=test_loss.detach().cpu().numpy()
-            # torch.cuda.empty_cache()
+        with torch.no_grad():
+            for idx, (test_x, test_label) in enumerate(test_loader):
+                test_x=test_x.cuda()
+                test_label=test_label.cuda()
+                
+                predict_y = model(test_x.float()).detach()
+                label_np = test_label#.numpy()
+                test_loss=cost(predict_y, label_np)
+                # test_loss=test_loss/data_setting.accum_grad_num
+                sum_loss+=test_loss.detach().cpu().numpy()
+                # torch.cuda.empty_cache()
 
         ave_loss=sum_loss / (idx+1)    
         is_best = ave_loss<best_loss

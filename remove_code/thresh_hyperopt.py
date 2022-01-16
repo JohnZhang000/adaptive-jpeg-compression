@@ -99,7 +99,7 @@ def get_defended_attacked_acc_mp(fmodel,attack_eps,defenders,defender_names,imgs
     return cors_np
 
 def get_defended_attacked_acc(fmodel,attack_eps,defenders,defender_names,imgs_in,labels_in,batch_size):
-    cors=np.zeros((imgs_in.shape[0],len(defenders)+1))
+    cors=np.zeros((imgs_in.shape[0],len(defenders)))
     
     batch_num=int(np.ceil(imgs_in.shape[1]/batch_size))
     for i in range(imgs_in.shape[0]):
@@ -108,17 +108,12 @@ def get_defended_attacked_acc(fmodel,attack_eps,defenders,defender_names,imgs_in
             end_idx=min((j+1)*batch_size,imgs_in.shape[1])
             images_att=imgs_in[i,start_idx:end_idx,...].copy()
             labels=labels_in[start_idx:end_idx]
-            for k in range(len(defenders)+1):
+            for k in range(len(defenders)):
                     images_def = images_att.copy()
-                    if k>0:
-                        if 'ADAD-flip'==defender_names[k-1]:
-                            images_def,_ = defenders[k-1](images_def.transpose(0,2,3,1).copy(),labels.copy(),None,0)
-                        elif 'ADAD+eps-flip'==defender_names[k-1]:
-                            images_def,_ = defenders[k-1](images_def.transpose(0,2,3,1).copy(),labels.copy(),attack_eps[i]*np.ones(images_def.shape[0]),0)
-                        else:
-                            images_def,_ = defenders[k-1](images_def.transpose(0,2,3,1).copy(),labels.copy())
-                        images_def=images_def.transpose(0,3,1,2)
-                    cors[i,k] += get_acc(fmodel,images_def,labels)
+                    images_def,_ = defenders[k](images_def.transpose(0,2,3,1).copy(),labels.copy(),attack_eps[i]*np.ones(images_def.shape[0]),0)
+                    images_def=images_def.transpose(0,3,1,2)
+                    images_def_cp=images_def.copy()
+                    cors[i,k] += get_acc(fmodel,images_def_cp,labels)
     cors=cors/imgs_in.shape[1]
     return cors
 
@@ -181,11 +176,11 @@ def cal_table(threshs,saved_dir,cln_imgs_in,adv_imgs_in,attack_eps):
         np.set_printoptions(suppress=True)
         a_qtable,_,_,_=Cal_channel_wise_qtable(clean_imgs_ycc, adv_imgs_ycc,threshs)
         a_qtable=np.round(a_qtable)
-        table_dict[attack_eps[i+1]]=a_qtable
+        table_dict[attack_eps[i]]=a_qtable
         del clean_imgs,adv_imgs,clean_imgs_ycc,adv_imgs_ycc
         gc.collect()
     # print(table_dict[0.5])
-    pickle.dump(table_dict, open(os.path.join(saved_dir,'table_dict.pkl'),'wb'))
+    pickle.dump(table_dict, open(os.path.join(saved_dir,'table_dict_'+str(attack_eps[0])+'.pkl'),'wb'))
     
 # def cal_table_jpeg(threshs,saved_dir,cln_imgs_in,adv_imgs_in,attack_eps):
         
@@ -212,7 +207,7 @@ def objective(args):
     nb_classes=args[8]
     input_size=args[9]
     pred_batch_size=args[10]
-    attack_eps=args[11]
+    attack_eps=[args[11]]
     fmodel=args[12]
     
     # print(threshs)
@@ -222,17 +217,17 @@ def objective(args):
     '''
     cal_table(threshs,saved_dir,cln_imgs_in,adv_imgs_in,attack_eps)
 
-    table_pkl=os.path.join(saved_dir,'table_dict.pkl')
+    table_pkl=os.path.join(saved_dir,'table_dict_'+str(attack_eps[0])+'.pkl')
     defender=adaptive_defender(table_pkl,None,nb_classes,input_size,pred_batch_size,None)
     
     '''
     计算防御效果
     '''            
     # 标为原始样本
-    imgs_in=np.vstack((np.expand_dims(cln_imgs_in,0),adv_imgs_in))
+    imgs_in=adv_imgs_in
     labels_in=labels
     accs=get_defended_attacked_acc(fmodel,attack_eps,[defender.defend],['ADAD+eps-flip'],imgs_in,labels_in,batch_size)
-    metric=accs.mean(axis=0)[1]
+    metric=accs.mean(axis=0)[0]
     output=-metric
     # print(accs)#[:,1])
     return output
@@ -327,63 +322,70 @@ if __name__=='__main__':
     '''
     超参数优化
     '''
-    trials=Trials()
-    eps.insert(0,0.0)
-    # space =[hp.quniform('t0',0,0.5,resolution),hp.quniform('t1',0,1,resolution),hp.quniform('t2',0,1,resolution)]
-    space =[
-            # hp.choice('t0',[0.066]),hp.choice('t1',[0.003]),hp.choice('t2',[0.165]),
-            hp.quniform('t0',data_setting.hyperopt_thresh_lower,data_setting.hyperopt_thresh_upper,data_setting.hyperopt_resolution),
-            hp.quniform('t1',data_setting.hyperopt_thresh_lower,data_setting.hyperopt_thresh_upper,data_setting.hyperopt_resolution),
-            hp.quniform('t2',data_setting.hyperopt_thresh_lower,data_setting.hyperopt_thresh_upper,data_setting.hyperopt_resolution),#hp.choice('t0',[0.9]),hp.choice('t1',[0.01]),hp.choice('t2',[0.01])
-            hp.choice('saved_dir',[saved_dir]),
-            
-            hp.choice('clean_imgs',[clean_imgs]),
-            hp.choice('adv_imgs_in',[adv_imgs]),
-            hp.choice('labels',[labels]),
-            
-            hp.choice('batch_size',[data_setting.pred_batch_size]),
-            hp.choice('nb_classes',[data_setting.nb_classes]),
-            hp.choice('input_size',[data_setting.input_shape[-1]]),
-            hp.choice('pred_batch_size',[data_setting.pred_batch_size]),
-            hp.choice('attack_eps',[np.array(eps)]),
-            hp.choice('fmodel',[fmodel])]
+    for idx_eps,eps_now in enumerate(eps):
+        print('Hyperopt thresh for {}'.format(eps_now))
+        trials=Trials()
+        space =[
+                # hp.choice('t0',[0.066]),hp.choice('t1',[0.003]),hp.choice('t2',[0.165]),
+                hp.quniform('t0',data_setting.hyperopt_thresh_lower,data_setting.hyperopt_thresh_upper,data_setting.hyperopt_resolution),
+                hp.quniform('t1',data_setting.hyperopt_thresh_lower,data_setting.hyperopt_thresh_upper,data_setting.hyperopt_resolution),
+                hp.quniform('t2',data_setting.hyperopt_thresh_lower,data_setting.hyperopt_thresh_upper,data_setting.hyperopt_resolution),#hp.choice('t0',[0.9]),hp.choice('t1',[0.01]),hp.choice('t2',[0.01])
+                hp.choice('saved_dir',[saved_dir]),
+                
+                hp.choice('clean_imgs',[clean_imgs]),
+                hp.choice('adv_imgs_in',[np.expand_dims(adv_imgs[idx_eps,...],axis=0)]),
+                hp.choice('labels',[labels]),
+                
+                hp.choice('batch_size',[data_setting.pred_batch_size]),
+                hp.choice('nb_classes',[data_setting.nb_classes]),
+                hp.choice('input_size',[data_setting.input_shape[-1]]),
+                hp.choice('pred_batch_size',[data_setting.pred_batch_size]),
+                hp.choice('attack_eps',[eps_now]),
+                hp.choice('fmodel',[fmodel])]
+        
+        best=fmin(objective,space,algo=rand.suggest,max_evals=data_setting.hyperopt_max_evals,verbose=True, max_queue_len=1,trials=trials)
+        pickle.dump(trials,open(os.path.join(saved_dir,'hyperopt_trail_'+str(eps_now)+'.pkl'),"wb"))
+        trials=pickle.load(open(os.path.join(saved_dir,'hyperopt_trail_'+str(eps_now)+'.pkl'),"rb"))
+        print(best)
+        
+        '''
+        可视化
+        '''
+        trials_list=[]
+        parameters=['t0','t1','t2']
+        cols = len(parameters)
+        f, axes = plt.subplots(nrows=1, ncols=cols, figsize=(20, 5))
+        cmap = plt.cm.jet
+        for i, val in enumerate(parameters):
+            xs = np.array([t['misc']['vals'][val] for t in trials.trials]).ravel()
+            ys = [-t['result']['loss'] for t in trials.trials]
+            trials_list.append(np.expand_dims(np.vstack((xs,ys)),axis=0))
+            axes[i].scatter(
+                xs,
+                ys,
+                s=20,
+                linewidth=0.01,
+                alpha=1,
+                c='black')#cmap(float(i) / len(parameters)))
+            axes[i].set_title(val)
+            axes[i].set_ylim([np.array(ys).min()-0.1, np.array(ys).max()+0.1])
+        plt.savefig(os.path.join(saved_dir,'hyperopt_trail_'+str(eps_now)+'.png'), bbox_inches='tight')
+        trials_np=np.vstack(trials_list)
+        np.save(os.path.join(saved_dir,'hyperopt_trail_np_'+str(eps_now)+'.npy'),trials_np)
+        print(trials.best_trial)
+        
+        '''
+        保存best table
+        '''
+        cal_table([best['t0'],best['t1'],best['t2']],saved_dir,clean_imgs,np.expand_dims(adv_imgs[idx_eps,...],axis=0),[eps_now])
     
-    best=fmin(objective,space,algo=rand.suggest,max_evals=data_setting.hyperopt_max_evals,verbose=True, max_queue_len=1,trials=trials)
-    pickle.dump(trials,open(os.path.join(saved_dir,'hyperopt_trail.pkl'),"wb"))
-    trials=pickle.load(open(os.path.join(saved_dir,'hyperopt_trail.pkl'),"rb"))
-    print(best)
-    
     '''
-    可视化
+    合并最终结果
     '''
-    trials_list=[]
-    parameters=['t0','t1','t2']
-    cols = len(parameters)
-    f, axes = plt.subplots(nrows=1, ncols=cols, figsize=(20, 5))
-    cmap = plt.cm.jet
-    for i, val in enumerate(parameters):
-        xs = np.array([t['misc']['vals'][val] for t in trials.trials]).ravel()
-        ys = [-t['result']['loss'] for t in trials.trials]
-        trials_list.append(np.expand_dims(np.vstack((xs,ys)),axis=0))
-        axes[i].scatter(
-            xs,
-            ys,
-            s=20,
-            linewidth=0.01,
-            alpha=1,
-            c='black')#cmap(float(i) / len(parameters)))
-        axes[i].set_title(val)
-        axes[i].set_ylim([np.array(ys).min()-0.1, np.array(ys).max()+0.1])
-    plt.savefig(os.path.join(saved_dir,'hyperopt_trail.png'), bbox_inches='tight')
-    trials_np=np.vstack(trials_list)
-    np.save(os.path.join(saved_dir,'hyperopt_trail_np.npy'),trials_np)
-    print(trials.best_trial)
-    
-    '''
-    保存best table
-    '''
-    attacks=[]
-    for eps_now in eps:
-        attacker,_=g.select_attack(fmodel,data_setting.hyperopt_attacker_name,eps_now)
-        attacks.append(attacker)
-    cal_table([best['t0'],best['t1'],best['t2']],saved_dir,clean_imgs,adv_imgs,eps)
+    table_dict=dict()
+    table_dict[0]=np.ones([8,8,3])
+    for idx_eps,eps_now in enumerate(eps):
+        table_pkl=os.path.join(saved_dir,'table_dict_'+str(eps_now)+'.pkl')
+        tabel_dict_tmp=pickle.load(open(table_pkl,'rb'))
+        table_dict.update(tabel_dict_tmp)
+    pickle.dump(table_dict, open(os.path.join(saved_dir,'table_dict.pkl'),'wb'))

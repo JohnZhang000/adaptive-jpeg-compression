@@ -7,6 +7,7 @@ Created on Fri Oct 22 15:51:35 2021
 """
 
 import os
+import cv2
 import numpy as np
 import torch
 import torchvision.models as models
@@ -27,6 +28,7 @@ from scipy.fftpack import dct,idct
 import socket
 import PIL
 import time
+import matplotlib.pyplot as plt
 
 attack_names=['FGSM_L2_IDP','PGD_L2_IDP','CW_L2_IDP','Deepfool_L2_IDP','FGSM_Linf_IDP','PGD_Linf_IDP','CW_Linf_IDP']
 eps_L2=[0.1,1.0,10.0]
@@ -461,3 +463,40 @@ def scale_table(table_now,Q=50):
     q_table=np.floor((S*table_now+50)/100)
     q_table[q_table==0]=1
     return q_table
+
+def save_images(saved_dir,images,pre_att=None):
+    
+    assert(images.shape[2]==images.shape[3])
+    if not os.path.exists(saved_dir):
+        os.makedirs(saved_dir)
+
+    images=images.transpose(0,2,3,1)
+    for choosed_idx in range(images.shape[0]):
+        img_vanilla_tc  = images[choosed_idx,...]
+        img_vanilla_np  = np.uint8(np.clip(np.round(img_vanilla_tc*255),0,255))
+                
+        name=str(choosed_idx)+'.png' 
+        img_vanilla_np_res=cv2.resize(img_vanilla_np[...,::-1], (224,224))
+        
+        saved_name=os.path.join(saved_dir,name)
+        if pre_att:
+            saved_name=os.path.join(saved_dir,pre_att+name)
+        cv2.imwrite(saved_name, img_vanilla_np_res)
+
+def save_images_channel(saved_dir,images,pre_att=None):
+    
+    assert(images.shape[1]==images.shape[2])
+    if not os.path.exists(saved_dir):
+        os.makedirs(saved_dir)
+
+    for choosed_idx in range(images.shape[0]):
+        name=str(choosed_idx) 
+        saved_name=os.path.join(saved_dir,name)
+        if pre_att:
+            saved_name=os.path.join(saved_dir,pre_att+name)
+        np.savetxt(saved_name+'.txt',images[choosed_idx,...])
+
+        img_vanilla_tc  = images[choosed_idx,...]
+        img_vanilla_np  = np.uint8(np.clip(np.round(img_vanilla_tc/img_vanilla_tc.max()*255),0,255))
+        img_vanilla_np_res=cv2.resize(img_vanilla_np, (224,224))
+        cv2.imwrite(saved_name+'.png', img_vanilla_np_res)

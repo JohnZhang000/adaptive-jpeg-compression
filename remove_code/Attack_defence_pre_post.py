@@ -28,6 +28,7 @@ from scipy.special import softmax
 from defense import defend_webpf_wrap,defend_webpf_my_wrap,defend_rdg_wrap,defend_fd_wrap,defend_bdr_wrap,defend_shield_wrap
 from defense import defend_my_webpf
 from defense_ago import defend_FD_ago_warp,defend_my_fd_ago
+from fd_jpeg import fddnn_defend
 from adaptivce_defense import adaptive_defender
 
 from models.cifar.allconv import AllConvNet
@@ -237,6 +238,8 @@ if __name__=='__main__':
     defences_names_pre.append('FD')
     defences_pre.append(defend_shield_wrap)
     defences_names_pre.append('SHIELD')
+    defences_pre.append(fddnn_defend)
+    defences_names_pre.append('FD_DNN')
     # # defences_pre.append(defend_FD_ago_warp)
     # # defences_names_pre.append('FD_ago')
     

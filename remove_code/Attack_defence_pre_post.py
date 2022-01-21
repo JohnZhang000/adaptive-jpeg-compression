@@ -237,9 +237,9 @@ if __name__=='__main__':
     defences_pre.append(defend_shield_wrap)
     defences_names_pre.append('SHIELD')
     defences_pre.append(defend_fd_wrap)
-    defences_names_pre.append('FD')
+    defences_names_pre.append('EPA')
     defences_pre.append(fddnn_defend)
-    defences_names_pre.append('FD_DNN')
+    defences_names_pre.append('FD')
     # # defences_pre.append(defend_FD_ago_warp)
     # # defences_names_pre.append('FD_ago')
     

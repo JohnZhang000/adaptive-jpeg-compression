@@ -15,7 +15,7 @@ from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 from torch.nn import CrossEntropyLoss,MSELoss
 from torch.nn.utils import clip_grad_norm_
-from torch.optim import SGD,Adam,lr_scheduler
+from torch.optim import SGD,Adam,lr_scheduler,AdamW
 import os
 import time
 import sys
@@ -27,6 +27,7 @@ import pickle
 import joblib
 import logging
 from models.resnet_reg import resnet50,resnet18
+from models.convnext_reg import convnext_xlarge_reg
 from pytorchtools import EarlyStopping
 sys.path.append('../common_code')
 import general as g
@@ -183,7 +184,7 @@ if __name__=='__main__':
     # 配置解释器参数
     if len(sys.argv)!=2:
         print('Manual Mode !!!')  
-        model_type    = 'vgg16_imagenet'
+        model_type    = 'allconv'
         # device     = 3
         flag_manual_mode = 1
     else:
@@ -230,10 +231,12 @@ if __name__=='__main__':
     
     
     # model = Net()
-    model = resnet50(data_setting.nb_classes)
-    model.init_weights()
+    # model = resnet50(data_setting.nb_classes)   
+    # model.init_weights()
+    model = convnext_xlarge_reg(data_setting.nb_classes)
     model = torch.nn.DataParallel(model).cuda()
-    optimizer = Adam(model.parameters(),lr=cnn_max_lr,weight_decay=1e-4)
+    # optimizer = Adam(model.parameters(),lr=cnn_max_lr,weight_decay=0.05)
+    optimizer = AdamW(model.parameters(),lr=cnn_max_lr,weight_decay=0.05)
     # optimizer = SGD(model.parameters(),lr=cnn_max_lr, momentum=0.9,weight_decay=1e-4)
     # scheduler = lr_scheduler.OneCycleLR(optimizer,max_lr=cnn_max_lr,
     #                                     total_steps=int(cnn_epochs*len(train_loader)/data_setting.accum_grad_num), 

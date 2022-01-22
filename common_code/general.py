@@ -129,10 +129,10 @@ class dataset_setting():
             self.label_batch_size=4
             # self.hyperopt_attacker_name='FGSM_L2_IDP'
             # self.hyperopt_img_num=1000
-            self.hyperopt_img_val_num=0.2
+            self.hyperopt_img_val_num=0.1
             # self.hyperopt_max_evals=4
             # self.hyperopt_resolution=0.01
-            self.cnn_max_lr     = 1e-7
+            self.cnn_max_lr     = 1e-4
             # self.cnn_epochs     = 300
             self.cnn_batch_size = 8#*16*5
             self.label_eps_range=10

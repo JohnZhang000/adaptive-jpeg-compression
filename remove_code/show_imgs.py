@@ -158,57 +158,57 @@ if __name__=='__main__':
     '''
     读取数据
     '''  
-    start_time=time.time()
+    # start_time=time.time()
     
-    spectrums=np.zeros((len(attacks)+1,data_num,data_setting.input_shape[1],data_setting.input_shape[2],data_setting.input_shape[0]))
-    images_clns=np.zeros((data_num,data_setting.input_shape[1],data_setting.input_shape[2],data_setting.input_shape[0]))
-    images_advs=np.zeros((len(attacks),data_num,data_setting.input_shape[1],data_setting.input_shape[2],data_setting.input_shape[0]))
-    images_defs=np.zeros((len(attacks),len(defences_pre),data_num,data_setting.input_shape[1],data_setting.input_shape[2],data_setting.input_shape[0]))
-    images_defs_spectrum=np.zeros((len(attacks),len(defences_pre),data_num,data_setting.input_shape[1],data_setting.input_shape[2],data_setting.input_shape[0]))
+    # spectrums=np.zeros((len(attacks)+1,data_num,data_setting.input_shape[1],data_setting.input_shape[2],data_setting.input_shape[0]))
+    # images_clns=np.zeros((data_num,data_setting.input_shape[1],data_setting.input_shape[2],data_setting.input_shape[0]))
+    # images_advs=np.zeros((len(attacks),data_num,data_setting.input_shape[1],data_setting.input_shape[2],data_setting.input_shape[0]))
+    # images_defs=np.zeros((len(attacks),len(defences_pre),data_num,data_setting.input_shape[1],data_setting.input_shape[2],data_setting.input_shape[0]))
+    # images_defs_spectrum=np.zeros((len(attacks),len(defences_pre),data_num,data_setting.input_shape[1],data_setting.input_shape[2],data_setting.input_shape[0]))
 
-    start_idx=0
-    for i, (images, labels) in enumerate(tqdm(dataloader)):
+    # start_idx=0
+    # for i, (images, labels) in enumerate(tqdm(dataloader)):
         
-        images=images.numpy()
-        labels=labels.numpy()
+    #     images=images.numpy()
+    #     labels=labels.numpy()
 
-        if start_idx+len(labels) > data_num:
-            images=images[0:data_num-start_idx]
-            labels=labels[0:data_num-start_idx]
+    #     if start_idx+len(labels) > data_num:
+    #         images=images[0:data_num-start_idx]
+    #         labels=labels[0:data_num-start_idx]
 
-        images_dct=get_spectrum(images.copy())
+    #     images_dct=get_spectrum(images.copy())
 
-        spectrums[0,start_idx:start_idx+len(labels),...]=images_dct
-        images_clns[start_idx:start_idx+len(labels),...]=images.transpose(0,2,3,1)
+    #     spectrums[0,start_idx:start_idx+len(labels),...]=images_dct
+    #     images_clns[start_idx:start_idx+len(labels),...]=images.transpose(0,2,3,1)
 
-        for j in range(len(attacks)):               
-            images_adv_tmp=attacks[j].generate(x=images.copy(),y=labels)
+    #     for j in range(len(attacks)):               
+    #         images_adv_tmp=attacks[j].generate(x=images.copy(),y=labels)
         
-            images_dct=get_spectrum(images_adv_tmp.copy())
+    #         images_dct=get_spectrum(images_adv_tmp.copy())
         
-            spectrums[j+1,start_idx:start_idx+len(labels),...]=images_dct
-            images_advs[j,start_idx:start_idx+len(labels),...]=images_adv_tmp.transpose(0,2,3,1)
+    #         spectrums[j+1,start_idx:start_idx+len(labels),...]=images_dct
+    #         images_advs[j,start_idx:start_idx+len(labels),...]=images_adv_tmp.transpose(0,2,3,1)
 
-            images_adv_tmp=images_adv_tmp.transpose(0,2,3,1)
-            for k in range(len(defences_pre)):
-                if 'ADAD-flip'==defences_names_pre[k]:
-                    images_def,_ = defences_pre[k](images_adv_tmp.copy(),labels,None,0)
-                elif 'ADAD+eps-flip'==defences_names_pre[k]:
-                    images_def,_ = defences_pre[k](images_adv_tmp.copy(),labels,attacks[j].eps*np.ones(images_adv_tmp.shape[0]),0)
-                elif 'ADAD+eps+flip'==defences_names_pre[k]:
-                    images_def,_ = defences_pre[k](images_adv_tmp.copy(),labels,attacks[j].eps*np.ones(images_adv_tmp.shape[0]),1)
-                else:
-                    images_def,_ = defences_pre[k](images_adv_tmp.copy(),labels)
-                images_def=images_def.transpose(0,3,1,2)
-                images_defs[j,k,start_idx:start_idx+len(labels),...]=images_def.transpose(0,2,3,1)
+    #         images_adv_tmp=images_adv_tmp.transpose(0,2,3,1)
+    #         for k in range(len(defences_pre)):
+    #             if 'ADAD-flip'==defences_names_pre[k]:
+    #                 images_def,_ = defences_pre[k](images_adv_tmp.copy(),labels,None,0)
+    #             elif 'ADAD+eps-flip'==defences_names_pre[k]:
+    #                 images_def,_ = defences_pre[k](images_adv_tmp.copy(),labels,attacks[j].eps*np.ones(images_adv_tmp.shape[0]),0)
+    #             elif 'ADAD+eps+flip'==defences_names_pre[k]:
+    #                 images_def,_ = defences_pre[k](images_adv_tmp.copy(),labels,attacks[j].eps*np.ones(images_adv_tmp.shape[0]),1)
+    #             else:
+    #                 images_def,_ = defences_pre[k](images_adv_tmp.copy(),labels)
+    #             images_def=images_def.transpose(0,3,1,2)
+    #             images_defs[j,k,start_idx:start_idx+len(labels),...]=images_def.transpose(0,2,3,1)
 
-                images_dct=get_spectrum(images_def.copy())
-                images_defs_spectrum[j,k,start_idx:start_idx+len(labels),...]=images_dct-spectrums[j+1,start_idx:start_idx+len(labels),...]
+    #             images_dct=get_spectrum(images_def.copy())
+    #             images_defs_spectrum[j,k,start_idx:start_idx+len(labels),...]=images_dct-spectrums[j+1,start_idx:start_idx+len(labels),...]
 
-        start_idx=start_idx+len(labels)
-        if start_idx>=data_num:
-            break
-    print('done')
+    #     start_idx=start_idx+len(labels)
+    #     if start_idx>=data_num:
+    #         break
+    # print('done')
 
     # '''
     # 输出图片
@@ -244,17 +244,17 @@ if __name__=='__main__':
     '''
     输出防御后的频谱
     '''
-    spectrums_show=images_defs_spectrum.mean(axis=2) 
-    spectrums_show=np.abs(spectrums_show).transpose(0,1,4,2,3)   
-    for i in range(spectrums_show.shape[0]):
-        for j in range(spectrums_show.shape[1]):
-            pre_fix=attack_names[i]+'_'+defences_names_pre[j]+'_'
-            pre_fix=pre_fix.replace('FGSM_L2_','')
-            g.save_images_channel(os.path.join(saved_dir_path,'spectrums/defenders'),spectrums_show[i,j,...],pre_fix)
+    # spectrums_show=images_defs_spectrum.mean(axis=2) 
+    # spectrums_show=np.abs(spectrums_show).transpose(0,1,4,2,3)   
+    # for i in range(spectrums_show.shape[0]):
+    #     for j in range(spectrums_show.shape[1]):
+    #         pre_fix=attack_names[i]+'_'+defences_names_pre[j]+'_'
+    #         pre_fix=pre_fix.replace('FGSM_L2_','')
+    #         g.save_images_channel(os.path.join(saved_dir_path,'spectrums/defenders'),spectrums_show[i,j,...],pre_fix)
     
-    # '''
-    # 输出表格
-    # '''
+    '''
+    输出表格
+    '''
     # table_saved_dir=os.path.join(saved_dir_path,'tables')
     # if not os.path.exists(table_saved_dir):
     #     os.makedirs(table_saved_dir)
@@ -263,3 +263,19 @@ if __name__=='__main__':
     #     for i in range(value.shape[2]):
     #         np.savetxt(os.path.join(table_saved_dir,str(key)+'_'+str(i)+'.txt'),value[...,i])
 
+    '''
+    输出hyperopt
+    '''
+    hyperopt_saved_dir=os.path.join(saved_dir_path,'hyperopt')
+    if not os.path.exists(hyperopt_saved_dir):
+        os.makedirs(hyperopt_saved_dir)
+    eps=[0.1,0.5,1.0]
+    for eps_now in eps:
+        trials=pickle.load(open(os.path.join('../saved_tests/img_attack/'+model_vanilla_type,'hyperopt_trail_'+str(eps_now)+'.pkl'),"rb"))
+        xs0=np.array([t['misc']['vals']['t0'] for t in trials.trials]).ravel()
+        xs1=np.array([t['misc']['vals']['t1'] for t in trials.trials]).ravel()
+        xs2=np.array([t['misc']['vals']['t2'] for t in trials.trials]).ravel()
+        ys = [-t['result']['loss'] for t in trials.trials]
+
+        xy=np.vstack((xs0,xs1,xs2,ys))
+        np.savetxt(os.path.join(hyperopt_saved_dir,str(eps_now)+'.txt'),xy.T)

@@ -92,7 +92,7 @@ class dataset_setting():
             # self.hyperopt_attacker_name='FGSM_L2_IDP'
             # self.hyperopt_img_num=1000
             # self.hyperopt_img_val_num=0.1
-            # self.hyperopt_max_evals=100
+            self.hyperopt_max_evals=1000
             # self.hyperopt_resolution=0.01
             self.cnn_max_lr     = 1e-3
             # self.cnn_epochs     = 300
@@ -107,34 +107,42 @@ class dataset_setting():
                 self.dataset_dir='/home/estar/Datasets/ILSVRC2012-5'           # modify
                 self.workers=20
                 self.device_num=2
+                self.pred_batch_size=8
+                self.cnn_batch_size =8
             elif 'Jet'==self.device:
                 self.dataset_dir='/mnt/sdb/zhangzhuang/Datasets/ILSVRC2012-100'
                 self.workers=32
                 self.device_num=3
+                self.pred_batch_size=8
+                self.cnn_batch_size =8
             elif 'QuadCopter'==self.device:
                 self.dataset_dir='/home/zhangzhuang/Datasets/ILSVRC2012-100'
                 self.workers=48
                 self.device_num=2
+                self.pred_batch_size=8
+                self.cnn_batch_size =8
             elif 'ubuntu204'==self.device:
                 self.dataset_dir='/media/ubuntu204/F/Dataset/ILSVRC2012-100'
-                self.workers=48
+                self.workers=16
                 self.device_num=4
+                self.pred_batch_size=32
+                self.cnn_batch_size =32
             else:
                 raise Exception('Wrong device')
             self.mean=np.array((0.485, 0.456, 0.406),dtype=np.float32)
             self.std=np.array((0.229, 0.224, 0.225),dtype=np.float32)
             self.nb_classes=1000
             self.input_shape=(3,224,224)
-            self.pred_batch_size=8
+            # self.pred_batch_size=8
             self.label_batch_size=4
             # self.hyperopt_attacker_name='FGSM_L2_IDP'
             # self.hyperopt_img_num=1000
             self.hyperopt_img_val_num=0.1
-            # self.hyperopt_max_evals=4
+            self.hyperopt_max_evals=100
             # self.hyperopt_resolution=0.01
-            self.cnn_max_lr     = 1e-4
+            self.cnn_max_lr     = 1e-7
             # self.cnn_epochs     = 300
-            self.cnn_batch_size = 8#*16*5
+            # self.cnn_batch_size = 8#*16*5
             self.label_eps_range=10
             self.accum_grad_num=int(256/self.cnn_batch_size)
             self.eps_L2=[1,5,10]

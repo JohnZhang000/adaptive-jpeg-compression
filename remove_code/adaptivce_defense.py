@@ -16,6 +16,7 @@ import sys
 sys.path.append('../common_code')
 import general as g
 import multiprocessing
+from models.convnext_reg import convnext_xlarge_reg
 # This file contains the defense methods compared in the paper.
 # The FD algorithm's source code is from:
 #   https://github.com/zihaoliu123/Feature-Distillation-DNN-Oriented-JPEG-Compression-Against-Adversarial-Examples/blob/master/utils/feature_distillation.py
@@ -40,6 +41,7 @@ class adaptive_defender:
         self.model=None
         if not (dir_model is None):
             self.model=resnet50(nb_classes).eval()
+            # self.model = convnext_xlarge_reg(nb_classes).eval()
             self.model = torch.nn.DataParallel(self.model).cuda()
             checkpoint = torch.load(dir_model)
             self.model.load_state_dict(checkpoint["state_dict"],True)
@@ -135,13 +137,14 @@ class adaptive_defender:
         imgs_tmp=imgs_tmp.transpose(0,3,1,2)   
         
         eps_list=[]
-        batch_size=self.pred_batch_size
+        batch_size=8#self.pred_batch_size
         batch_num=int(np.ceil(imgs_tmp.shape[0]/batch_size))
-        for i in range(batch_num):
-            start_idx=batch_size*i
-            end_idx=min(batch_size*(i+1),imgs_tmp.shape[0])
-            eps_tmp=self.model(torch.from_numpy(imgs_tmp[start_idx:end_idx,...]).cuda()).detach().cpu().numpy()
-            eps_list.append(eps_tmp)
+        with torch.no_grad():
+            for i in range(batch_num):
+                start_idx=batch_size*i
+                end_idx=min(batch_size*(i+1),imgs_tmp.shape[0])
+                eps_tmp=self.model(torch.from_numpy(imgs_tmp[start_idx:end_idx,...]).cuda()).detach().cpu().numpy()
+                eps_list.append(eps_tmp)
             torch.cuda.empty_cache()
         
         eps_np=np.hstack(eps_list)

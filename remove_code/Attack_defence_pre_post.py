@@ -36,6 +36,7 @@ from third_party.ResNeXt_DenseNet.models.densenet import densenet
 from third_party.ResNeXt_DenseNet.models.resnext import resnext29
 from third_party.WideResNet_pytorch.wideresnet import WideResNet
 from torch.utils.data import DataLoader
+from models.convnext_reg import convnext_xlarge_reg
 
 import json
 
@@ -204,7 +205,7 @@ if __name__=='__main__':
     else:
         dataset_name='cifar-10'
     data_setting=g.dataset_setting(dataset_name)
-    dataset=g.load_dataset(dataset_name,data_setting.dataset_dir,'val')
+    dataset=g.load_dataset(dataset_name,data_setting.dataset_dir,'val',data_setting.hyperopt_img_val_num)
     dataloader = DataLoader(dataset, batch_size=data_setting.pred_batch_size, drop_last=False, num_workers=data_setting.workers, pin_memory=True)    
 
     '''
@@ -282,13 +283,13 @@ if __name__=='__main__':
     for i in range(len(eps_L2)):
           attacks.append(FastGradientMethod(estimator=fmodel,eps=eps_L2[i],norm=2,eps_step=eps_L2[i]))
           attack_names.append('FGSM_L2_'+str(eps_L2[i]))    
-    # for i in range(len(eps_L2)):
-    #       attacks.append(ProjectedGradientDescent(estimator=fmodel,eps=eps_L2[i],norm=2,batch_size=data_setting.pred_batch_size,verbose=False))
-    #       attack_names.append('PGD_L2_'+str(eps_L2[i]))    
-    # attacks.append(DeepFool(classifier=fmodel,batch_size=data_setting.pred_batch_size,verbose=False))
-    # attack_names.append('DeepFool_L2')    
-    # attacks.append(CarliniL2Method(classifier=fmodel,batch_size=data_setting.pred_batch_size,verbose=False))
-    # attack_names.append('CW_L2')
+    for i in range(len(eps_L2)):
+          attacks.append(ProjectedGradientDescent(estimator=fmodel,eps=eps_L2[i],norm=2,batch_size=data_setting.pred_batch_size,verbose=False))
+          attack_names.append('PGD_L2_'+str(eps_L2[i]))    
+    attacks.append(DeepFool(classifier=fmodel,batch_size=data_setting.pred_batch_size,verbose=False))
+    attack_names.append('DeepFool_L2')    
+    attacks.append(CarliniL2Method(classifier=fmodel,batch_size=data_setting.pred_batch_size,verbose=False))
+    attack_names.append('CW_L2')
 
     ctx = torch.multiprocessing.get_context("spawn")
     pool = ctx.Pool(data_setting.device_num)    

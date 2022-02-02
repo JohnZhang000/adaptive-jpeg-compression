@@ -231,9 +231,9 @@ if __name__=='__main__':
     
     
     # model = Net()
-    # model = resnet50(data_setting.nb_classes)   
-    # model.init_weights()
-    model = convnext_xlarge_reg(data_setting.nb_classes)
+    model = resnet50(data_setting.nb_classes)   
+    model.init_weights()
+    # model = convnext_xlarge_reg(data_setting.nb_classes)
     model = torch.nn.DataParallel(model).cuda()
     # optimizer = Adam(model.parameters(),lr=cnn_max_lr,weight_decay=0.05)
     optimizer = AdamW(model.parameters(),lr=cnn_max_lr,weight_decay=0.05)
@@ -241,7 +241,7 @@ if __name__=='__main__':
     # scheduler = lr_scheduler.OneCycleLR(optimizer,max_lr=cnn_max_lr,
     #                                     total_steps=int(cnn_epochs*len(train_loader)/data_setting.accum_grad_num), 
     #                                     verbose=False)
-    cost = my_loss#MSELoss(reduction='mean')#CrossEntropyLoss()
+    cost = my_loss#MSELoss(reduction='mean')#
     epoch = cnn_epochs
     best_loss = 100000000
     early_stoper=EarlyStopping(patience=10, verbose=False, delta=0, trace_func=logger.fatal)

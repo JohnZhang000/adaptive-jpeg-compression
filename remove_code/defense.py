@@ -18,6 +18,7 @@ import os
 from my_spectrum_analyzer import img_spectrum_analyzer
 import sys
 sys.path.append('../common_code')
+sys.path.append('./common_code')
 import general as g
 
 """"

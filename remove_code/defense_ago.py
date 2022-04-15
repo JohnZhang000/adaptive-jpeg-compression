@@ -1,6 +1,6 @@
 from albumentations import augmentations
 from scipy.fftpack import dct, idct, rfft, irfft
-import tensorflow as tf
+# import tensorflow as tf
 import numpy as np
 from albumentations import *
 from random import randint, uniform
@@ -92,57 +92,57 @@ def remap(img,index):
 
 
 # GD algorithm that runs in the session (for EOT)
-def tftensorGD(img,distort_limit = 0.25):
-    num_steps = 10
-    upflag = tf.round(tf.random_uniform((1,), 0, 1, dtype=tf.float32))
-    leftflag = tf.round(tf.random_uniform((1,), 0, 1, dtype=tf.float32))
-    xstep = tf.constant(1.0) + tf.random_uniform((num_steps + 1,),
-                                                 -distort_limit,
-                                                 distort_limit,
-                                                 dtype=tf.float32)
-    ystep = tf.constant(1.0) + tf.random_uniform((num_steps + 1,),
-                                                 -distort_limit,
-                                                 distort_limit,
-                                                 dtype=tf.float32)
-    img_shape = tf.shape(img)
-    height, width = img_shape[0], img_shape[1]
-    x_step = width // num_steps
-    y_step = height // num_steps
-    xs = tf.range(0.0, tf.dtypes.cast(width, tf.float32), delta=x_step)
-    ys = tf.range(0.0, tf.dtypes.cast(height, tf.float32), delta=y_step)
-    prev = tf.constant(0.0)
-    listvec_x = tf.zeros((1, 1))
-    for i in range(num_steps + 1):
-        start = tf.cast(xs[i], tf.int32)
-        end = tf.cast(xs[i], tf.int32) + x_step
-        cur = tf.cond(end > width, lambda: tf.cast(width, tf.float32),
-                      lambda: prev + tf.cast(x_step, tf.float32) * xstep[i])
-        end = tf.cond(end > width, lambda: width, lambda: end)
-        listvec_x = tf.concat([listvec_x, tf.reshape(tf.linspace(prev, cur, end - start), (1, -1))], -1)
-        prev = cur
-    xx = tf.cast(tf.clip_by_value(tf.round(listvec_x), 0, (input_size-1)), tf.int32)
-    map_x = tf.tile(xx[:, 1:], (input_size, 1))
-    xx2 = tf.reverse(((input_size-1) * tf.ones_like(xx, dtype=tf.int32) - xx), [1])
-    map_x2 = tf.tile(xx2[:, :input_size], (input_size, 1))
-    prev = tf.constant(0.0)
-    listvec_y = tf.zeros((1, 1))
-    for i in range(num_steps + 1):
-        start = tf.cast(ys[i], tf.int32)
-        end = tf.cast(ys[i], tf.int32) + y_step
-        cur = tf.cond(end > width, lambda: tf.cast(height, tf.float32),
-                      lambda: prev + tf.cast(y_step, tf.float32) * ystep[i])
-        end = tf.cond(end > width, lambda: width, lambda: end)
-        listvec_y = tf.concat([listvec_y, tf.reshape(tf.linspace(prev, cur, end - start), (1, -1))], -1)
-        prev = cur
-    yy = tf.cast(tf.clip_by_value(tf.round(listvec_y), 0, (input_size-1)), tf.int32)
-    map_y = tf.tile(tf.transpose(yy)[1:, :], (1, input_size))
-    yy2 = tf.reverse(((input_size-1) * tf.ones_like(yy, dtype=tf.int32) - yy), [1])
-    map_y2 = tf.tile(tf.transpose(yy2)[:input_size, :], (1, input_size))
-    index_x = tf.cond(leftflag[0] > 0.5, lambda: tf.identity(map_x), lambda: tf.identity(map_x2))
-    index_y = tf.cond(upflag[0] > 0.5, lambda: tf.identity(map_y), lambda: tf.identity(map_y2))
-    index = tf.stack([index_y, index_x], 2)
-    x_gd = tf.gather_nd(img, index)
-    return x_gd
+# def tftensorGD(img,distort_limit = 0.25):
+#     num_steps = 10
+#     upflag = tf.round(tf.random_uniform((1,), 0, 1, dtype=tf.float32))
+#     leftflag = tf.round(tf.random_uniform((1,), 0, 1, dtype=tf.float32))
+#     xstep = tf.constant(1.0) + tf.random_uniform((num_steps + 1,),
+#                                                  -distort_limit,
+#                                                  distort_limit,
+#                                                  dtype=tf.float32)
+#     ystep = tf.constant(1.0) + tf.random_uniform((num_steps + 1,),
+#                                                  -distort_limit,
+#                                                  distort_limit,
+#                                                  dtype=tf.float32)
+#     img_shape = tf.shape(img)
+#     height, width = img_shape[0], img_shape[1]
+#     x_step = width // num_steps
+#     y_step = height // num_steps
+#     xs = tf.range(0.0, tf.dtypes.cast(width, tf.float32), delta=x_step)
+#     ys = tf.range(0.0, tf.dtypes.cast(height, tf.float32), delta=y_step)
+#     prev = tf.constant(0.0)
+#     listvec_x = tf.zeros((1, 1))
+#     for i in range(num_steps + 1):
+#         start = tf.cast(xs[i], tf.int32)
+#         end = tf.cast(xs[i], tf.int32) + x_step
+#         cur = tf.cond(end > width, lambda: tf.cast(width, tf.float32),
+#                       lambda: prev + tf.cast(x_step, tf.float32) * xstep[i])
+#         end = tf.cond(end > width, lambda: width, lambda: end)
+#         listvec_x = tf.concat([listvec_x, tf.reshape(tf.linspace(prev, cur, end - start), (1, -1))], -1)
+#         prev = cur
+#     xx = tf.cast(tf.clip_by_value(tf.round(listvec_x), 0, (input_size-1)), tf.int32)
+#     map_x = tf.tile(xx[:, 1:], (input_size, 1))
+#     xx2 = tf.reverse(((input_size-1) * tf.ones_like(xx, dtype=tf.int32) - xx), [1])
+#     map_x2 = tf.tile(xx2[:, :input_size], (input_size, 1))
+#     prev = tf.constant(0.0)
+#     listvec_y = tf.zeros((1, 1))
+#     for i in range(num_steps + 1):
+#         start = tf.cast(ys[i], tf.int32)
+#         end = tf.cast(ys[i], tf.int32) + y_step
+#         cur = tf.cond(end > width, lambda: tf.cast(height, tf.float32),
+#                       lambda: prev + tf.cast(y_step, tf.float32) * ystep[i])
+#         end = tf.cond(end > width, lambda: width, lambda: end)
+#         listvec_y = tf.concat([listvec_y, tf.reshape(tf.linspace(prev, cur, end - start), (1, -1))], -1)
+#         prev = cur
+#     yy = tf.cast(tf.clip_by_value(tf.round(listvec_y), 0, (input_size-1)), tf.int32)
+#     map_y = tf.tile(tf.transpose(yy)[1:, :], (1, input_size))
+#     yy2 = tf.reverse(((input_size-1) * tf.ones_like(yy, dtype=tf.int32) - yy), [1])
+#     map_y2 = tf.tile(tf.transpose(yy2)[:input_size, :], (1, input_size))
+#     index_x = tf.cond(leftflag[0] > 0.5, lambda: tf.identity(map_x), lambda: tf.identity(map_x2))
+#     index_y = tf.cond(upflag[0] > 0.5, lambda: tf.identity(map_y), lambda: tf.identity(map_y2))
+#     index = tf.stack([index_y, index_x], 2)
+#     x_gd = tf.gather_nd(img, index)
+#     return x_gd
 
 # GD algorithm that runs outside the session (for BPDA)
 def defend_GD(img,distort_limit = 0.25):
@@ -1285,45 +1285,45 @@ def defend_TotalVarience(input_array, keep_prob=0.5, lambda_tv=0.03):
     return bregman(input_array, mask, weight=2.0 / lambda_tv)
 
 
-def make_defend_quilt(sess):
-    # setup for quilting
-    quilt_db = np.load('data/quilt_db.npy')
-    quilt_db_reshaped = quilt_db.reshape(1000000, -1)
-    TILE_SIZE = 5
-    TILE_OVERLAP = 2
-    tile_skip = TILE_SIZE - TILE_OVERLAP
-    K = 10
-    db_tensor = tf.placeholder(tf.float32, quilt_db_reshaped.shape)
-    query_imgs = tf.placeholder(tf.float32, (TILE_SIZE * TILE_SIZE * 3, None))
-    norms = tf.reduce_sum(tf.square(db_tensor), axis=1)[:, tf.newaxis] \
-            - 2 * tf.matmul(db_tensor, query_imgs)
-    _, topk_indices = tf.nn.top_k(-tf.transpose(norms), k=K, sorted=False)
+# def make_defend_quilt(sess):
+#     # setup for quilting
+#     quilt_db = np.load('data/quilt_db.npy')
+#     quilt_db_reshaped = quilt_db.reshape(1000000, -1)
+#     TILE_SIZE = 5
+#     TILE_OVERLAP = 2
+#     tile_skip = TILE_SIZE - TILE_OVERLAP
+#     K = 10
+#     db_tensor = tf.placeholder(tf.float32, quilt_db_reshaped.shape)
+#     query_imgs = tf.placeholder(tf.float32, (TILE_SIZE * TILE_SIZE * 3, None))
+#     norms = tf.reduce_sum(tf.square(db_tensor), axis=1)[:, tf.newaxis] \
+#             - 2 * tf.matmul(db_tensor, query_imgs)
+#     _, topk_indices = tf.nn.top_k(-tf.transpose(norms), k=K, sorted=False)
 
-    def min_error_table(arr, direction):
-        assert direction in ('horizontal', 'vertical')
-        y, x = arr.shape
-        cum = np.zeros_like(arr)
-        if direction == 'horizontal':
-            cum[:, -1] = arr[:, -1]
-            for ix in range(x - 2, -1, -1):
-                for iy in range(y):
-                    m = arr[iy, ix + 1]
-                    if iy > 0:
-                        m = min(m, arr[iy - 1, ix + 1])
-                    if iy < y - 1:
-                        m = min(m, arr[iy + 1, ix + 1])
-                    cum[iy, ix] = arr[iy, ix] + m
-        elif direction == 'vertical':
-            cum[-1, :] = arr[-1, :]
-            for iy in range(y - 2, -1, -1):
-                for ix in range(x):
-                    m = arr[iy + 1, ix]
-                    if ix > 0:
-                        m = min(m, arr[iy + 1, ix - 1])
-                    if ix < x - 1:
-                        m = min(m, arr[iy + 1, ix + 1])
-                    cum[iy, ix] = arr[iy, ix] + m
-        return cum
+#     def min_error_table(arr, direction):
+#         assert direction in ('horizontal', 'vertical')
+#         y, x = arr.shape
+#         cum = np.zeros_like(arr)
+#         if direction == 'horizontal':
+#             cum[:, -1] = arr[:, -1]
+#             for ix in range(x - 2, -1, -1):
+#                 for iy in range(y):
+#                     m = arr[iy, ix + 1]
+#                     if iy > 0:
+#                         m = min(m, arr[iy - 1, ix + 1])
+#                     if iy < y - 1:
+#                         m = min(m, arr[iy + 1, ix + 1])
+#                     cum[iy, ix] = arr[iy, ix] + m
+#         elif direction == 'vertical':
+#             cum[-1, :] = arr[-1, :]
+#             for iy in range(y - 2, -1, -1):
+#                 for ix in range(x):
+#                     m = arr[iy + 1, ix]
+#                     if ix > 0:
+#                         m = min(m, arr[iy + 1, ix - 1])
+#                     if ix < x - 1:
+#                         m = min(m, arr[iy + 1, ix + 1])
+#                     cum[iy, ix] = arr[iy, ix] + m
+#         return cum
 
     def index_exists(arr, index):
         if arr.ndim != len(index):
@@ -1550,18 +1550,18 @@ def randomizing_crop(x):
                              box_ind=[0], crop_size=[crop_size, crop_size])
 
 PAD_VALUE = 0.5
-def defend_randomization(input_tensor):
-    rnd = tf.random_uniform((), input_size, 400, dtype=tf.int32)
-    rescaled = tf.image.crop_and_resize(input_tensor, [[0, 0, 1, 1]], [0], [rnd, rnd])
-    h_rem = 400 - rnd
-    w_rem = 400 - rnd
-    pad_left = tf.random_uniform((), 0, w_rem, dtype=tf.int32)
-    pad_right = w_rem - pad_left
-    pad_top = tf.random_uniform((), 0, h_rem, dtype=tf.int32)
-    pad_bottom = h_rem - pad_top
-    padded = tf.pad(rescaled, [[0, 0], [pad_top, pad_bottom], [pad_left, pad_right], [0, 0]], constant_values=PAD_VALUE)
-    padded.set_shape((1, 400, 400, 3))
-    return padded
+# def defend_randomization(input_tensor):
+#     rnd = tf.random_uniform((), input_size, 400, dtype=tf.int32)
+#     rescaled = tf.image.crop_and_resize(input_tensor, [[0, 0, 1, 1]], [0], [rnd, rnd])
+#     h_rem = 400 - rnd
+#     w_rem = 400 - rnd
+#     pad_left = tf.random_uniform((), 0, w_rem, dtype=tf.int32)
+#     pad_right = w_rem - pad_left
+#     pad_top = tf.random_uniform((), 0, h_rem, dtype=tf.int32)
+#     pad_bottom = h_rem - pad_top
+#     padded = tf.pad(rescaled, [[0, 0], [pad_top, pad_bottom], [pad_left, pad_right], [0, 0]], constant_values=PAD_VALUE)
+#     padded.set_shape((1, 400, 400, 3))
+#     return padded
 
 from skimage import transform
 def defend_onlyrand(img):

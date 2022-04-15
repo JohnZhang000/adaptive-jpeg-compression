@@ -440,6 +440,22 @@ def img2dct(clean_imgs):
             block_dct[i,:,:,j]=block_cln_tmp
     return block_dct
 
+def img2dct_single(img_in):
+    img_in=img_in.numpy()
+    assert(3==len(img_in.shape))
+    assert(img_in.shape[1]==img_in.shape[2])
+    # n = clean_imgs.shape[0]
+    # h = clean_imgs.shape[1]
+    # w = clean_imgs.shape[2]
+    c = img_in.shape[0]
+    
+    block_dct=np.zeros_like(img_in)
+    for j in range(c):
+        ch_block_cln=img_in[j,...]                   
+        block_cln_tmp = np.log(1+np.abs(dct2(ch_block_cln)))
+        block_dct[j,...]=block_cln_tmp
+    return torch.from_numpy(block_dct)
+
 table_y=np.array([
     [16, 11, 10, 16, 24, 40, 51, 61],
     [12, 12, 14, 19, 26, 58, 60, 55],

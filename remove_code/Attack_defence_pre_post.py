@@ -51,7 +51,7 @@ import pickle
 from tqdm import tqdm
 import logging
 
-from my_run_mae_vis import mas_defender
+from mae_defender import mae_defender
 torch.multiprocessing.set_sharing_strategy('file_system')
 
 def append_attack(attacks,attack,model,epss):
@@ -237,10 +237,10 @@ if __name__=='__main__':
     # defences_names_pre.append('BDR')
     # defences_pre.append(defend_rdg_wrap)
     # defences_names_pre.append('RDG')
-    # defences_pre.append(defend_webpf_wrap)
-    # defences_names_pre.append('WEBPF')
-    # defences_pre.append(JpegCompression(clip_values=(0,1),quality=25,channels_first=False))
-    # defences_names_pre.append('JPEG')
+    defences_pre.append(defend_webpf_wrap)
+    defences_names_pre.append('WEBPF')
+    defences_pre.append(JpegCompression(clip_values=(0,1),quality=25,channels_first=False))
+    defences_names_pre.append('JPEG')
     # defences_pre.append(defend_shield_wrap)
     # defences_names_pre.append('SHIELD')
     # defences_pre.append(defend_fd_wrap)
@@ -275,7 +275,7 @@ if __name__=='__main__':
     # defences_names_pre.append('ADAD+eps-flip')
     # defences_pre.append(adaptive_defender.defend)
     # defences_names_pre.append('ADAD+eps+flip')
-    my_mas_defender=mas_defender()
+    my_mas_defender=mae_defender('./MAE/models/mae_visualize_vit_large_ganloss.pth')
     defences_pre.append(my_mas_defender.defend)
     defences_names_pre.append('MAE')
 

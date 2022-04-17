@@ -14,15 +14,21 @@
 #         --output_dir ${OUTPUT_DIR} \
 #         --log_dir ${OUTPUT_DIR}
 
-OUTPUT_DIR='./results/tmp/ILSVRC2012-100'
-DATA_PATH='/media/ubuntu204/F/Dataset/ILSVRC2012-100/train'
+clear
+OUTPUT_DIR='./results/tmp/'$(date +%Y%m%d_%H%M%S)
+if [ ! -d "$OUTPUT_DIR" ]; then
+        mkdir $OUTPUT_DIR
+fi
+
+# OUTPUT_DIR='./results/tmp/ILSVRC2012-100'
+DATA_PATH='/media/ubuntu204/F/Dataset/ILSVRC2012-10/train'
 
 # batch_size can be adjusted according to the graphics card
-OMP_NUM_THREADS=1 python -m torch.distributed.launch --nproc_per_node=4 run_mae_pretraining.py \
+OMP_NUM_THREADS=1 python -m torch.distributed.launch --nproc_per_node=4 my_run_mae_pretraining.py \
         --data_path ${DATA_PATH} \
         --mask_ratio 0.1 \
         --model pretrain_mae_base_patch16_224 \
-        --batch_size 32 \
+        --batch_size 16 \
         --opt adamw \
         --opt_betas 0.9 0.95 \
         --warmup_epochs 10 \

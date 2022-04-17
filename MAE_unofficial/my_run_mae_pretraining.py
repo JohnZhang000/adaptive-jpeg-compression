@@ -17,13 +17,12 @@ import os
 from functools import partial
 import torch.nn as nn
 
-
 from pathlib import Path
 
 from timm.models import create_model
 from optim_factory import create_optimizer
 
-from datasets import build_pretraining_dataset,build_dataset
+from datasets import build_pretraining_dataset
 from engine_for_pretraining import train_one_epoch
 from utils import NativeScalerWithGradNormCount as NativeScaler
 import utils
@@ -34,7 +33,7 @@ def get_args():
     parser = argparse.ArgumentParser('MAE pre-training script', add_help=False)
     parser.add_argument('--batch_size', default=64, type=int)
     parser.add_argument('--epochs', default=200, type=int)
-    parser.add_argument('--save_ckpt_freq', default=2, type=int)
+    parser.add_argument('--save_ckpt_freq', default=5, type=int)
 
     # Model parameters
     parser.add_argument('--model', default='pretrain_mae_base_patch16_224', type=str, metavar='MODEL',
@@ -88,13 +87,13 @@ def get_args():
                         help='Training interpolation (random, bilinear, bicubic default: "bicubic")')
 
     # Dataset parameters
-    parser.add_argument('--data_path', default='/media/ubuntu204/F/Dataset/ILSVRC2012-100/train', type=str,
+    parser.add_argument('--data_path', default='/media/ubuntu204/F/Dataset/ILSVRC2012-100', type=str,
                         help='dataset path')
     parser.add_argument('--imagenet_default_mean_and_std', default=False, action='store_true')
 
     parser.add_argument('--output_dir', default='./results/tmp',
                         help='path where to save, empty for no saving')
-    parser.add_argument('--log_dir', default='./results/tmp',
+    parser.add_argument('--log_dir', default=None,
                         help='path where to tensorboard log')
     parser.add_argument('--device', default='cuda',
                         help='device to use for training / testing')
@@ -106,7 +105,7 @@ def get_args():
 
     parser.add_argument('--start_epoch', default=0, type=int, metavar='N',
                         help='start epoch')
-    parser.add_argument('--num_workers', default=16, type=int)
+    parser.add_argument('--num_workers', default=10, type=int)
     parser.add_argument('--pin_mem', action='store_true',
                         help='Pin CPU memory in DataLoader for more efficient (sometimes) transfer to GPU.')
     parser.add_argument('--no_pin_mem', action='store_false', dest='pin_mem',
@@ -131,6 +130,7 @@ def get_model(args):
         drop_path_rate=args.drop_path,
         drop_block_rate=None,
     )
+
     return model
 
 
@@ -157,7 +157,6 @@ def main(args):
 
     # get dataset
     dataset_train = build_pretraining_dataset(args)
-    # dataset_train,_=build_dataset(True,args)
 
     if True:  # args.distributed:
         num_tasks = utils.get_world_size()

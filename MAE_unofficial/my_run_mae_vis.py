@@ -30,7 +30,7 @@ from pathlib import Path
 from timm.models import create_model
 
 import utils
-import modeling_pretrain
+import my_modeling_pretrain
 from datasets import DataAugmentationForMAE
 
 from torchvision.transforms import ToPILImage
@@ -41,14 +41,14 @@ def get_args():
     parser = argparse.ArgumentParser('MAE visualization reconstruction script', add_help=False)
     parser.add_argument('--img_path', default='',type=str, help='input image path')
     parser.add_argument('--save_path', default='',type=str, help='save image path')
-    parser.add_argument('--model_path', default='./MAE/results/tmp/ILSVRC2012-100_with_mean_mr0.75/pretrain_mae_vit_base_mask_0.75_400e.pth',type=str, help='checkpoint path of model')
+    parser.add_argument('--model_path', default='./MAE/results/tmp/20220416_163033_both_npy/checkpoint-4.pth',type=str, help='checkpoint path of model')
 
     parser.add_argument('--input_size', default=224, type=int,
                         help='images input size for backbone')
     parser.add_argument('--device', default='cuda:0',
                         help='device to use for training / testing')
     parser.add_argument('--imagenet_default_mean_and_std', default=True, action='store_true')
-    parser.add_argument('--mask_ratio', default=0.01, type=float,
+    parser.add_argument('--mask_ratio', default=0.1, type=float,
                         help='ratio of the visual tokens/patches need be masked')
     # Model parameters
     parser.add_argument('--model', default='pretrain_mae_base_patch16_224', type=str, metavar='MODEL',
@@ -74,8 +74,8 @@ def dct2img(dct_imgs):
     for i in range(n):
         for j in range(c):
             ch_block_cln=dct_imgs[i,j,:,:]                   
-            block_cln_tmp = np.log(1+np.abs(idct2(ch_block_cln)))
-            block_cln[i,:,:,j]=block_cln_tmp
+            block_cln_tmp = idct2(ch_block_cln)
+            block_cln[i,j,:,:]=block_cln_tmp
     return torch.tensor(block_cln)
 
 def ycbcr_to_rgb(imgs):
@@ -216,10 +216,12 @@ class mas_defender():
                 outputs = self.model(img, bool_masked_pos)
 
                 #save original img
-                mean = torch.as_tensor(np.load('mean.py')).cuda()[None, :, None, None]   #zhang
-                std = torch.as_tensor(np.load('std.py')).cuda()[None, :, None, None]   #zhang
+                mean = torch.as_tensor(np.load('spectrum_imagenet_mean.npy')).cuda()[None, :]   #zhang
+                std = torch.as_tensor(np.load('spectrum_imagenet_std.npy')).cuda()[None, :]   #zhang
                 # mean = torch.as_tensor(IMAGENET_DEFAULT_MEAN).cuda()[None, :, None, None]
                 # std = torch.as_tensor(IMAGENET_DEFAULT_STD).cuda()[None, :, None, None]
+                # mean = torch.as_tensor((0.04008908,0.00953541,0.00794689)).cuda()[None, :, None, None]
+                # std = torch.as_tensor((0.03745347,0.01009368,0.00836723)).cuda()[None, :, None, None]
                 ori_img = img * std + mean  # in [0, 1]
                 # img = ToPILImage()(ori_img[0, :])
                 # img.save(f"{args.save_path}/ori_img.jpg")
@@ -248,11 +250,14 @@ class mas_defender():
                 # img = ToPILImage()(img_mask[0, :])
                 # img.save(f"{args.save_path}/mask_img.jpg")
 
-                rec_img= dct2img(rec_img)  #zhang
-                rec_img= ycbcr_to_rgb(rec_img)
-                out_image.append(rec_img)
-        out_image=torch.vstack(out_image).cpu().numpy()
-        out_image=out_image.transpose(0,2,3,1)
+                # rec_img= ori_img[None,:]
+                rec_img= dct2img(rec_img.cpu())  #zhang
+                rec_img= Image.fromarray(np.transpose(np.uint8(rec_img.squeeze().numpy()*255),(1,2,0)),mode='YCbCr')
+                rec_img=rec_img.convert('RGB')
+                rec_img= np.array(rec_img)
+                out_image.append(rec_img[None,:])
+        out_image=np.vstack(out_image)
+        # out_image=out_image
         return out_image,labels
 
 if __name__ == '__main__':

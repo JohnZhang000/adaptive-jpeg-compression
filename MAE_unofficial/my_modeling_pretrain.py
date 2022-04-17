@@ -16,6 +16,32 @@ from modeling_finetune import Block, _cfg, PatchEmbed, get_sinusoid_encoding_tab
 from timm.models.registry import register_model
 from timm.models.layers import trunc_normal_ as __call_trunc_normal_
 
+from torch import Tensor, Size
+from typing import Union, List, Tuple
+from torch.nn import LayerNorm as LayerNorm
+
+_shape_t = Union[int, List[int], Size]
+NUMBER_LAYER = 10 # Encoder/Decoder
+
+class DeepNorm(torch.nn.Module):
+    def __init__(self, normalized_shape: _shape_t, eps: float = 1e-5, elementwise_affine: bool = True):
+        """
+            Deep Layer Normalization
+        :param normalized_shape: input shape from an expected input of size
+        :param eps:  a value added to the denominator for numerical stability, default 1e-8
+        :param elementwise_affine: a boolean value that when set to ``True``, this module
+            has learnable per-element affine parameters initialized to ones (for weights)
+            and zeros (for biases). Default: ``True``.
+        """
+        super(DeepNorm, self).__init__()
+
+        self.alpha = (2 * NUMBER_LAYER) ** 0.25
+        self.layernorm = LayerNorm(normalized_shape, eps=eps, elementwise_affine=elementwise_affine)
+
+
+    def forward(self, x):
+        x_normed = self.layernorm(x)
+        return self.alpha * x + x_normed
 
 def trunc_normal_(tensor, mean=0., std=1.):
     __call_trunc_normal_(tensor, mean=mean, std=std, a=-std, b=std)
@@ -215,6 +241,7 @@ class PretrainVisionTransformer(nn.Module):
             attn_drop_rate=attn_drop_rate,
             drop_path_rate=drop_path_rate, 
             norm_layer=norm_layer, 
+            # norm_layer=DeepNorm,
             init_values=init_values,
             use_learnable_pos_emb=use_learnable_pos_emb)
 
@@ -232,6 +259,7 @@ class PretrainVisionTransformer(nn.Module):
             attn_drop_rate=attn_drop_rate,
             drop_path_rate=drop_path_rate, 
             norm_layer=norm_layer, 
+            # norm_layer=DeepNorm,
             init_values=init_values)
 
         self.encoder_to_decoder = nn.Linear(encoder_embed_dim, decoder_embed_dim, bias=False)

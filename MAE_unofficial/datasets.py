@@ -32,7 +32,7 @@ def img2dct_single(img_in):
     block_dct=np.zeros_like(img_in)
     for j in range(c):
         ch_block_cln=img_in[j,...]                   
-        block_cln_tmp = np.log(1+np.abs(dct2(ch_block_cln)))
+        block_cln_tmp = dct2(ch_block_cln)
         block_dct[j,...]=block_cln_tmp
     return torch.from_numpy(block_dct)
 
@@ -41,8 +41,12 @@ class DataAugmentationForMAE(object):
         imagenet_default_mean_and_std = args.imagenet_default_mean_and_std
         # mean = IMAGENET_INCEPTION_MEAN if not imagenet_default_mean_and_std else IMAGENET_DEFAULT_MEAN
         # std = IMAGENET_INCEPTION_STD if not imagenet_default_mean_and_std else IMAGENET_DEFAULT_STD
-        mean = np.load('spectrum_imagenet_mean.npy') if not imagenet_default_mean_and_std else IMAGENET_DEFAULT_MEAN
-        std = np.load('spectrum_imagenet_std.npy') if not imagenet_default_mean_and_std else IMAGENET_DEFAULT_STD
+        mean = np.load('spectrum_imagenet_mean.npy')
+        std = np.load('spectrum_imagenet_std.npy')
+        # mean=IMAGENET_DEFAULT_MEAN
+        # std=IMAGENET_DEFAULT_STD
+        # mean=(0.0020, 0.0021, 0.0022)
+        # std=(0.0670, 0.0155, 0.0128)
 
         self.transform = transforms.Compose([
             transforms.Lambda(lambda img:img.convert('YCbCr')),

@@ -19,7 +19,7 @@ def img2dct_single(img_in):
     block_dct=np.zeros_like(img_in)
     for j in range(c):
         ch_block_cln=img_in[j,...]                   
-        block_cln_tmp = np.log(1+np.abs(dct2(ch_block_cln)))
+        block_cln_tmp = dct2(ch_block_cln)
         block_dct[j,...]=block_cln_tmp
     return torch.from_numpy(block_dct)
 
@@ -163,5 +163,8 @@ for i, (images, _) in enumerate(tqdm(data_loader)):
 images_all=torch.vstack(images_all)
 mean=images_all.mean(axis=0)
 std=images_all.std(axis=0)
-np.save('mean.npy',mean.numpy())
-np.save('std.npy',std.numpy())
+np.save('spectrum_imagenet_mean.npy',mean.numpy())
+np.save('spectrum_imagenet_std.npy',std.numpy())
+
+print(mean.mean(axis=-1).mean(axis=-1))
+print(std.mean(axis=-1).mean(axis=-1))

@@ -47,11 +47,13 @@ def train_one_epoch(model: torch.nn.Module, data_loader: Iterable, optimizer: to
         # import pdb; pdb.set_trace()
         with torch.no_grad():
             # calculate the predict label
-            mean = torch.as_tensor(np.load('spectrum_imagenet_mean.npy')).to(device)[None, :]
-            std = torch.as_tensor(np.load('spectrum_imagenet_std.npy')).to(device)[None, :]
+            # mean = torch.as_tensor(np.load('spectrum_imagenet_mean.npy')).to(device)[None, :]
+            # std = torch.as_tensor(np.load('spectrum_imagenet_std.npy')).to(device)[None, :]
             # mean = torch.as_tensor(IMAGENET_DEFAULT_MEAN).to(device)[None, :, None, None]
             # std = torch.as_tensor(IMAGENET_DEFAULT_STD).to(device)[None, :, None, None]
-            unnorm_images = images * std + mean  # in [0, 1]
+            # mean = torch.as_tensor((0.0020, 0.0021, 0.0022)).to(device)[None, :, None, None]
+            # std = torch.as_tensor((0.0670, 0.0155, 0.0128)).to(device)[None, :, None, None]
+            unnorm_images = images# * std + mean  # in [0, 1]
 
             if normlize_target:
                 images_squeeze = rearrange(unnorm_images, 'b c (h p1) (w p2) -> b (h w) (p1 p2) c', p1=patch_size, p2=patch_size)

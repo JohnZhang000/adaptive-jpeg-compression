@@ -122,7 +122,7 @@ class dataset_setting():
                 self.pred_batch_size=8
                 self.cnn_batch_size =8
             elif 'ubuntu204'==self.device:
-                self.dataset_dir='/media/ubuntu204/F/Dataset/ILSVRC2012-100'
+                self.dataset_dir='/media/ubuntu204/F/Dataset/ILSVRC2012-10'
                 self.workers=16
                 self.device_num=4
                 self.pred_batch_size=32

@@ -1,3 +1,4 @@
+from cv2 import transpose
 import numpy as np
 import math
 from scipy.fftpack import dct, idct, rfft, irfft
@@ -13,11 +14,15 @@ from sklearn.tree import DecisionTreeRegressor
 from sklearn.svm import SVR
 import pickle
 import joblib
+import torch
+from art.defences.preprocessor import GaussianAugmentation, JpegCompression,FeatureSqueezing,LabelSmoothing,Resample,SpatialSmoothing,ThermometerEncoding,TotalVarMin
+
 
 import os
 from my_spectrum_analyzer import img_spectrum_analyzer
 import sys
 sys.path.append('../common_code')
+sys.path.append('./common_code')
 import general as g
 
 """"
@@ -95,6 +100,105 @@ def defend_PROTAT(img, T=0.16, S=0.16, R=4):
         scaled_image = padding(new_image, img.shape[0], img.shape[1])
     return scaled_image
 
+
+def gather_nd(params, indices):
+    """ The same as tf.gather_nd but batched gather is not supported yet.
+    indices is an k-dimensional integer tensor, best thought of as a (k-1)-dimensional tensor of indices into params, where each element defines a slice of params:
+
+    output[\\(i_0, ..., i_{k-2}\\)] = params[indices[\\(i_0, ..., i_{k-2}\\)]]
+
+    Args:
+        params (Tensor): "n" dimensions. shape: [x_0, x_1, x_2, ..., x_{n-1}]
+        indices (Tensor): "k" dimensions. shape: [y_0,y_2,...,y_{k-2}, m]. m <= n.
+
+    Returns: gathered Tensor.
+        shape [y_0,y_2,...y_{k-2}] + params.shape[m:] 
+
+    """
+    orig_shape = list(indices.shape)
+    num_samples = np.prod(orig_shape[:-1])
+    m = orig_shape[-1]
+    n = len(params.shape)
+
+    if m <= n:
+        out_shape = orig_shape[:-1] + list(params.shape)[m:]
+    else:
+        raise ValueError(
+            f'the last dimension of indices must less or equal to the rank of params. Got indices:{indices.shape}, params:{params.shape}. {m} > {n}'
+        )
+
+    indices = indices.reshape((num_samples, m)).transpose(0, 1).tolist()
+    output = params[indices]    # (num_samples, ...)
+    return output.reshape(out_shape).contiguous()
+
+# GD algorithm that runs in the session (for EOT)
+def tctensorGD(img,num_steps = 10,distort_limit = 0.25):
+    xsteps = [1 + random.uniform(-distort_limit, distort_limit) for i in range(num_steps + 1)]
+    ysteps = [1 + random.uniform(-distort_limit, distort_limit) for i in range(num_steps + 1)]
+    height, width = img.shape[:2]
+
+    x_step = width // num_steps
+    xx = np.zeros(width, np.float32)
+    prev = 0
+    for idx, x in enumerate(range(0, width, x_step)):
+        start = x
+        end = x + x_step
+        if end > width:
+            end = width
+            cur = width
+        else:
+            cur = prev + x_step * xsteps[idx]
+
+        xx[start:end] = np.linspace(prev, cur, end - start)
+        prev = cur
+
+    y_step = height // num_steps
+    yy = np.zeros(height, np.float32)
+    prev = 0
+    for idx, y in enumerate(range(0, height, y_step)):
+        start = y
+        end = y + y_step
+        if end > height:
+            end = height
+            cur = height
+        else:
+            cur = prev + y_step * ysteps[idx]
+
+        yy[start:end] = np.linspace(prev, cur, end - start)
+        prev = cur
+    xx = np.round(xx).astype(int)
+    yy = np.round(yy).astype(int)
+    xx[xx >= img.shape[0]] = img.shape[0]-1
+    yy[yy >= img.shape[1]] = img.shape[1]-1
+    map_x, map_y = np.meshgrid(xx, yy)
+    # to speed up the mapping procedure, OpenCV 2 is adopted
+    map_x = map_x.astype(np.float32)
+    map_y = map_y.astype(np.float32)
+    # outimg = cv2.remap(img, map1=map_x, map2=map_y, interpolation=1, borderMode=4, borderValue=None)
+
+    # xx = tf.cast(tf.clip_by_value(tf.round(listvec_x), 0, 298), tf.int32)
+    # map_x = tf.tile(xx[:, 1:], (299, 1))
+    # xx2 = tf.reverse((298 * tf.ones_like(xx, dtype=tf.int32) - xx), [1])
+    # map_x2 = tf.tile(xx2[:, :299], (299, 1))
+    # prev = tf.constant(0.0)
+    # listvec_y = tf.zeros((1, 1))
+    # for i in range(num_steps + 1):
+    #     start = tf.cast(ys[i], tf.int32)
+    #     end = tf.cast(ys[i], tf.int32) + y_step
+    #     cur = tf.cond(end > width, lambda: tf.cast(height, tf.float32),
+    #                   lambda: prev + tf.cast(y_step, tf.float32) * ystep[i])
+    #     end = tf.cond(end > width, lambda: width, lambda: end)
+    #     listvec_y = tf.concat([listvec_y, tf.reshape(tf.linspace(prev, cur, end - start), (1, -1))], -1)
+    #     prev = cur
+    # yy = tf.cast(tf.clip_by_value(tf.round(listvec_y), 0, 298), tf.int32)
+    # map_y = tf.tile(tf.transpose(yy)[1:, :], (1, 299))
+    # yy2 = tf.reverse((298 * tf.ones_like(yy, dtype=tf.int32) - yy), [1])
+    # map_y2 = tf.tile(tf.transpose(yy2)[:299, :], (1, 299))
+    # index_x = tf.cond(leftflag[0] > 0.5, lambda: tf.identity(map_x), lambda: tf.identity(map_x2))
+    # index_y = tf.cond(upflag[0] > 0.5, lambda: tf.identity(map_y), lambda: tf.identity(map_y2))
+    index = np.stack([map_y, map_x], 2)
+    x_gd = gather_nd(img, torch.from_numpy(index))
+    return x_gd
 
 """
 RDG: Random distortion over grids.
@@ -475,6 +579,10 @@ def defend_webpf(img):
     return auged
 
 def defend_webpf_wrap(img,labels=None):
+    if isinstance(img,torch.Tensor): img=img.numpy()
+    if img.ndim==3 and img.shape[-1]==img.shape[-2]: img=np.expand_dims(img.transpose(1,2,0),axis=0)
+    elif img.ndim==4 and img.shape[-1]==img.shape[-2]: img=img.transpose(0,2,3,1)
+
     assert(img.shape[-3]==img.shape[-2])
     
     if img.ndim==3:
@@ -551,6 +659,9 @@ def defend_rdg_wrap(img,labels=None):
     return auged,labels
 
 def defend_fd_wrap(img,labels=None):
+    if isinstance(img,torch.Tensor): img=img.numpy()
+    if img.ndim==3 and img.shape[-1]==img.shape[-2]: img=np.expand_dims(img.transpose(1,2,0),axis=0)
+    elif img.ndim==4 and img.shape[-1]==img.shape[-2]: img=img.transpose(0,2,3,1)
     assert(img.shape[-3]==img.shape[-2])
     
     if img.ndim==3:
@@ -565,6 +676,9 @@ def defend_fd_wrap(img,labels=None):
     return auged,labels
 
 def defend_bdr_wrap(img,labels=None):
+    if isinstance(img,torch.Tensor): img=img.numpy()
+    if img.ndim==3 and img.shape[-1]==img.shape[-2]: img=np.expand_dims(img.transpose(1,2,0),axis=0)
+    elif img.ndim==4 and img.shape[-1]==img.shape[-2]: img=img.transpose(0,2,3,1)
     assert(img.shape[-3]==img.shape[-2])
     
     if img.ndim==3:
@@ -589,5 +703,22 @@ def defend_shield_wrap(img,labels=None):
             auged_tmp = defend_SHIELD(img[i,...])
             auged_list.append(np.expand_dims(auged_tmp,axis=0))
         auged=np.vstack(auged_list)
+    auged=auged.astype(np.float32)
+    return auged,labels
+
+def defend_jpeg_wrap(img,labels=None):
+    if isinstance(img,torch.Tensor): img=img.numpy()
+    if img.ndim==3 and img.shape[-1]==img.shape[-2]: img=np.expand_dims(img.transpose(1,2,0),axis=0)
+    elif img.ndim==4 and img.shape[-1]==img.shape[-2]: img=img.transpose(0,2,3,1)
+    assert(img.shape[-3]==img.shape[-2])
+
+    auged_list=[]
+    for i in range(img.shape[0]):
+        pil_image = PIL.Image.fromarray((img[i]*255.0).astype(np.uint8))
+        f = BytesIO()
+        pil_image.save(f, format='jpeg', quality=75) # quality level specified in paper
+        jpeg_image = np.asarray(PIL.Image.open(f)).astype(np.float32)/255.0
+        auged_list.append(jpeg_image)
+    auged=np.vstack(auged_list)
     auged=auged.astype(np.float32)
     return auged,labels

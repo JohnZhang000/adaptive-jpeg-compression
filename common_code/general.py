@@ -10,6 +10,7 @@ import os
 import cv2
 import numpy as np
 import torch
+import sys
 import torchvision.models as models
 from art.attacks.evasion import FastGradientMethod,DeepFool
 from art.attacks.evasion import CarliniL2Method,CarliniLInfMethod
@@ -73,8 +74,8 @@ class dataset_setting():
                 self.dataset_dir='/mnt/sdb/zhangzhuang/Datasets/Cifar-10'
                 self.workers=32
                 self.device_num=3
-            elif 'QuadCopter'==self.device:
-                self.dataset_dir='/home/zhangzhuang/Datasets/Cifar-10'
+            elif '1080x4-1'==self.device:
+                self.dataset_dir='/home/zhangzhuang/Datasets/cifar-10'
                 self.workers=48
                 self.device_num=2
             elif 'ubuntu204'==self.device:
@@ -115,7 +116,7 @@ class dataset_setting():
                 self.device_num=3
                 self.pred_batch_size=8
                 self.cnn_batch_size =8
-            elif 'QuadCopter'==self.device:
+            elif '1080x4-1'==self.device:
                 self.dataset_dir='/home/zhangzhuang/Datasets/ILSVRC2012-100'
                 self.workers=48
                 self.device_num=2

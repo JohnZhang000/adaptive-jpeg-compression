@@ -226,6 +226,10 @@ class adaptive_defender:
         return np.clip(resultdata.astype(np.float32()),0,1)
     
     def defend(self, imgs, labels=None, eps_in=None, flag_flip=1):
+        if isinstance(imgs,torch.Tensor): imgs=imgs.numpy()
+        if imgs.ndim==3 and imgs.shape[-1]==imgs.shape[-2]: imgs=np.expand_dims(imgs.transpose(1,2,0),axis=0)
+        elif imgs.ndim==4 and imgs.shape[-1]==imgs.shape[-2]: imgs=imgs.transpose(0,2,3,1)
+        assert(imgs.shape[-3]==imgs.shape[-2])
         imgs=self.padresult(imgs)
         
         # get eps and tables
@@ -242,9 +246,76 @@ class adaptive_defender:
         augeds = self.cropresult(augeds)
         
         # hor flip
+        augeds=self.defend_GD(augeds)
         if flag_flip:
             augeds = np.flip(augeds,2).copy()
         return augeds,labels 
+    
+    def defend_GD(self,img,distort_limit = 0.25):
+        auged_list=[]
+        for i in range(img.shape[0]):
+            auged_tmp=self.defend_GD_sig(img[i],distort_limit)
+            auged_list.append(np.expand_dims(auged_tmp,axis=0))
+        auged=np.vstack(auged_list)
+        return auged
+
+
+    def defend_GD_sig(self,img,distort_limit = 0.25):
+        num_steps = 10
+
+        xsteps = [1 + random.uniform(-distort_limit, distort_limit) for i in range(num_steps + 1)]
+        ysteps = [1 + random.uniform(-distort_limit, distort_limit) for i in range(num_steps + 1)]
+
+        height, width = img.shape[:2]
+
+        x_step = width // num_steps
+        xx = np.zeros(width, np.float32)
+        prev = 0
+        for idx, x in enumerate(range(0, width, x_step)):
+            start = x
+            end = x + x_step
+            if end > width:
+                end = width
+                cur = width
+            else:
+                cur = prev + x_step * xsteps[idx]
+
+            xx[start:end] = np.linspace(prev, cur, end - start)
+            prev = cur
+
+        y_step = height // num_steps
+        yy = np.zeros(height, np.float32)
+        prev = 0
+        for idx, y in enumerate(range(0, height, y_step)):
+            start = y
+            end = y + y_step
+            if end > height:
+                end = height
+                cur = height
+            else:
+                cur = prev + y_step * ysteps[idx]
+
+            yy[start:end] = np.linspace(prev, cur, end - start)
+            prev = cur
+        xx = np.round(xx).astype(int)
+        yy = np.round(yy).astype(int)
+        xx[xx >= self.input_size] = (self.input_size-1)
+        yy[yy >= self.input_size] = (self.input_size-1)
+
+        map_x, map_y = np.meshgrid(xx, yy)
+
+        #     index=np.dstack((map_y,map_x))
+        #     outimg = remap(img,index)
+        #     if np.ndim(img)>2:
+        #         outimg = outimg.transpose(1,0,2)
+        #     else:
+        #         outimg = outimg.T
+
+        # to speed up the mapping procedure, OpenCV 2 is adopted
+        map_x = map_x.astype(np.float32)
+        map_y = map_y.astype(np.float32)
+        outimg = cv2.remap(img, map1=map_x, map2=map_y, interpolation=1, borderMode=4, borderValue=None)
+        return outimg
     
 def Cal_channel_wise_qtable(clean_imgs,adv_imgs,thresh):
     n = clean_imgs.shape[0]

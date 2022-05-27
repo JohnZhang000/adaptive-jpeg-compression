@@ -564,7 +564,7 @@ T = np.array([
 num = 8
 q_table0 = np.ones((num,num))*30
 q_table0[0:4,0:4] = 25
-q_table0[0:1,0:1] = 25
+# q_table0[0:1,0:1] = 25
 
 # 0,1
 # q_table=np.array(
@@ -802,10 +802,10 @@ def FD_fuction(input_matrix):
                     block = np.reshape(block,(num,num))
                     block = dct2(block)
                     # quantization
-                    table_quantized = np.matrix.round(np.divide(block, q_table))
+                    table_quantized = np.matrix.round(np.divide(block, q_table0))
                     table_quantized = np.squeeze(np.asarray(table_quantized))
                     # de-quantization
-                    table_unquantized = table_quantized*q_table
+                    table_unquantized = table_quantized*q_table0
                     IDCT_table = idct2(table_unquantized)
                     if m==0:
                         output=IDCT_table
@@ -1008,6 +1008,7 @@ def Cal_channel_wise_qtable(clean_imgs,adv_imgs,thresh):
 def padresult(cleandata):
     
     pad = augmentations.transforms.PadIfNeeded(min_height=pad_size, min_width=pad_size, border_mode=4)
+    # paddata = pad(image=cleandata)['image']
     paddata = np.ones((cleandata.shape[0],pad_size,pad_size,3))
     for i in range(paddata.shape[0]):
         paddata[i] = pad(image = cleandata[i])['image']
@@ -1015,6 +1016,7 @@ def padresult(cleandata):
 def cropresult(paddata):
     
     crop = augmentations.crops.transforms.Crop(0,0,input_size,input_size)
+    # resultdata = crop(image=paddata)['image']
     resultdata = np.ones((paddata.shape[0],input_size,input_size,3))
     for i in range(resultdata.shape[0]):
         resultdata[i] = crop(image = paddata[i])['image']
@@ -1578,6 +1580,9 @@ def defend_onlyrand(img):
     return padded
 
 def defend_FD_ago_warp(img,labels=None):
+    if isinstance(img,torch.Tensor): img=img.numpy()
+    if img.ndim==3 and img.shape[-1]==img.shape[-2]: img=np.expand_dims(img.transpose(1,2,0),axis=0)
+    elif img.ndim==4 and img.shape[-1]==img.shape[-2]: img=img.transpose(0,2,3,1)
     assert(img.shape[-3]==img.shape[-2])
     
     global pad_size
@@ -1589,7 +1594,18 @@ def defend_FD_ago_warp(img,labels=None):
         pad_size=224
         input_size=224
         
-    auged=defend_FD(img)
+    # if img.ndim==3:
+    #     auged = defend_FD(img)
+    #     auged=defend_GD(auged)
+    # elif img.ndim==4:
+    #     auged_list=[]
+    #     for i in range(img.shape[0]):
+    auged = defend_FD(img)
+    auged_list=[]
+    for i in range(auged.shape[0]):
+        auged_tmp=defend_GD(auged[i])
+        auged_list.append(np.expand_dims(auged_tmp,axis=0))
+    auged=np.vstack(auged_list)
     auged=auged.astype(np.float32)
     return auged,labels
 

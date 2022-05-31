@@ -1,5 +1,5 @@
-clear
-saved_dir='../saved_tests/img_attack'
+# clear
+saved_dir='../saved_tests/BPDA'
 if [ ! -d "$saved_dir" ]; then
         mkdir $saved_dir
 fi
@@ -27,9 +27,11 @@ fi
 echo "Host:"$HOSTNAME"  Device:"$devices    |tee $log_name
 
 model_type=(resnet50_imagenet)
-attackers=(bpda)
-defenders=(JPEG WEBPF AFO Ours)
-epsilons=(0.05 1.0 1.5)
+attackers=(bpda_eot)
+defenders=(BDR RDG WEBPF JPEG SHIELD FD FDD AGO Ours)
+# defenders=(WEBPF JPEG AGO Ours)
+epsilons=(0.05)
+epochs=(50)
 
 echo  'SUMMARY:bpda'                      |tee -a $log_name
 echo  'model_type:       '${model_type[*]} |tee -a $log_name
@@ -40,23 +42,25 @@ echo  ''                                                                        
 echo  '********************************* Starting *********************************'   |tee -a $log_name
 echo  'start_time:       '$(date +%Y%m%d_%H%M%S)$a    |tee -a $log_name
 
-for ((i=0;i<${#attackers[*]};i++))
+for ((j=0;j<${#model_type[*]};j++))
 do 
-    attacker=${attackers[i]}
-    for ((j=0;j<${#model_type[*]};j++))
+    model=${model_type[j]}
+    for ((i=0;i<${#attackers[*]};i++))
     do 
-        model=${model_type[j]}
+        attacker=${attackers[i]}
         for ((k=0;k<${#epsilons[*]};k++))
         do 
             epsilon=${epsilons[k]}
-
-            for ((d=0;d<${#defenders[*]};d++))
+            for ((e=0;e<${#epochs[*]};e++))
             do 
-                defender=${defenders[d]}
-
-                echo  ''                                     |tee -a $log_name
-                echo  'attacker: '${attacker} 'model:'${model} 'epsilon: '${epsilon} 'defender: '${defender} |tee -a $log_name
-                python ../remove_code/BPDA_pytorch.py --model_data $model --attacker $attacker --defender $defender --epsilon $epsilon  -a $log_name
+                epoch=${epochs[e]}
+                for ((d=0;d<${#defenders[*]};d++))
+                do 
+                    defender=${defenders[d]}
+                    echo  ''                                     |tee -a $log_name
+                    echo  'attacker: '${attacker} 'model:'${model} 'epsilon: '${epsilon} 'epoch: '${epoch} 'defender: '${defender} |tee -a $log_name
+                    python ../remove_code/BPDA_pytorch.py --model_data $model --attacker $attacker --defender $defender --epsilon $epsilon --epoch $epoch |tee -a $log_name
+                done
             done
         done
     done

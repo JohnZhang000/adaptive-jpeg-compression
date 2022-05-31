@@ -246,7 +246,7 @@ class adaptive_defender:
         augeds = self.cropresult(augeds)
         
         # hor flip
-        augeds=self.defend_GD(augeds)
+        # augeds=self.defend_GD(augeds)
         if flag_flip:
             augeds = np.flip(augeds,2).copy()
         return augeds,labels 

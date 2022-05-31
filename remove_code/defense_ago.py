@@ -184,6 +184,7 @@ def defend_GD(img,distort_limit = 0.25):
         prev = cur
     xx = np.round(xx).astype(int)
     yy = np.round(yy).astype(int)
+    # print(input_size)
     xx[xx >= input_size] = (input_size-1)
     yy[yy >= input_size] = (input_size-1)
 
@@ -1142,6 +1143,7 @@ def defend_RCDfense(img):
         prev = cur
     xx = np.round(xx).astype(int)
     yy = np.round(yy).astype(int)
+    print(input_size)
     xx[xx >= input_size] = (input_size-1)
     yy[yy >= input_size] = (input_size-1)
 
@@ -1594,12 +1596,6 @@ def defend_FD_ago_warp(img,labels=None):
         pad_size=224
         input_size=224
         
-    # if img.ndim==3:
-    #     auged = defend_FD(img)
-    #     auged=defend_GD(auged)
-    # elif img.ndim==4:
-    #     auged_list=[]
-    #     for i in range(img.shape[0]):
     auged = defend_FD(img)
     auged_list=[]
     for i in range(auged.shape[0]):

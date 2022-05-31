@@ -642,8 +642,47 @@ class defend_my_webpf:
         auged,labels = defend_webpf_my_wrap(img,pred_eps)
         return auged,labels       
        
+def defend_gaua_wrap(img,labels=None):
+    if isinstance(img,torch.Tensor): img=img.numpy()
+    if img.ndim==3 and img.shape[-1]==img.shape[-2]: img=np.expand_dims(img.transpose(1,2,0),axis=0)
+    elif img.ndim==4 and img.shape[-1]==img.shape[-2]: img=img.transpose(0,2,3,1)
+    assert(img.shape[-3]==img.shape[-2])
+    
+    GauA=GaussianAugmentation(sigma=0.01,augmentation=False)
+    if img.ndim==3:
+        auged = GauA(img)
+    elif img.ndim==4:
+        auged_list=[]
+        for i in range(img.shape[0]):
+            auged_tmp = GauA(img[i,...])
+            auged_list.append(np.expand_dims(auged_tmp,axis=0))
+        auged=np.vstack(auged_list)
+    auged=auged.astype(np.float32)
+    return auged,labels
+
+def defend_bdr_wrap(img,labels=None):
+    if isinstance(img,torch.Tensor): img=img.numpy()
+    if img.ndim==3 and img.shape[-1]==img.shape[-2]: img=np.expand_dims(img.transpose(1,2,0),axis=0)
+    elif img.ndim==4 and img.shape[-1]==img.shape[-2]: img=img.transpose(0,2,3,1)
+    assert(img.shape[-3]==img.shape[-2])
+    
+    # GauA=GaussianAugmentation(sigma=0.01,augmentation=False)
+    bdr=SpatialSmoothing()
+    if img.ndim==3:
+        auged = bdr(img)
+    elif img.ndim==4:
+        auged_list=[]
+        for i in range(img.shape[0]):
+            auged_tmp = bdr(img[i,...])
+            auged_list.append(np.expand_dims(auged_tmp,axis=0))
+        auged=np.vstack(auged_list)
+    auged=auged.astype(np.float32)
+    return auged,labels
 
 def defend_rdg_wrap(img,labels=None):
+    if isinstance(img,torch.Tensor): img=img.numpy()
+    if img.ndim==3 and img.shape[-1]==img.shape[-2]: img=np.expand_dims(img.transpose(1,2,0),axis=0)
+    elif img.ndim==4 and img.shape[-1]==img.shape[-2]: img=img.transpose(0,2,3,1)
     assert(img.shape[-3]==img.shape[-2])
     num_steps=4
     
@@ -693,6 +732,9 @@ def defend_bdr_wrap(img,labels=None):
     return auged,labels
 
 def defend_shield_wrap(img,labels=None):
+    if isinstance(img,torch.Tensor): img=img.numpy()
+    if img.ndim==3 and img.shape[-1]==img.shape[-2]: img=np.expand_dims(img.transpose(1,2,0),axis=0)
+    elif img.ndim==4 and img.shape[-1]==img.shape[-2]: img=img.transpose(0,2,3,1)
     assert(img.shape[-3]==img.shape[-2])
     
     if img.ndim==3:
@@ -722,3 +764,14 @@ def defend_jpeg_wrap(img,labels=None):
     auged=np.vstack(auged_list)
     auged=auged.astype(np.float32)
     return auged,labels
+
+def tctensorGD_warp(img,labels=None):
+    assert isinstance(img,torch.Tensor)
+    if len(img.shape)==3 and img.shape[-1]==img.shape[-2]: img=img.permute(1,2,0).unsqueeze(0)
+    elif len(img.shape)==4 and img.shape[-1]==img.shape[-2]: img=img.permute(0,2,3,1)
+    assert(img.shape[-3]==img.shape[-2])
+    auged_list=[]
+    for i in range(img.shape[0]):
+        auged=tctensorGD(img[i])
+        auged_list.append(auged.unsqueeze(0).permute(0,3,1,2))
+    return torch.vstack(auged_list)

@@ -3,6 +3,7 @@ from PIL import Image
 import math
 import numpy as np
 import argparse
+import torch
 
 
 def load_quantization_table(component, qs=40):
@@ -107,7 +108,12 @@ def jpeg(npmat, component='jpeg', factor=50):
     npmat_decode = decode(cnt, coeff, component, factor)
     return npmat_decode
 
-def fddnn_defend(images_np,labels):
+def fddnn_defend(images_np,labels=None):
+    if isinstance(images_np,torch.Tensor): images_np=images_np.numpy()
+    if images_np.ndim==3 and images_np.shape[-1]==images_np.shape[-2]: images_np=np.expand_dims(images_np.transpose(1,2,0),axis=0)
+    elif images_np.ndim==4 and images_np.shape[-1]==images_np.shape[-2]: images_np=images_np.transpose(0,2,3,1)
+    assert(images_np.shape[-3]==images_np.shape[-2])
+
     images_out_np=np.zeros_like(images_np)
     images_np=np.clip(np.round(images_np*255),0,255).astype('uint8')
     for i in range(images_out_np.shape[0]):

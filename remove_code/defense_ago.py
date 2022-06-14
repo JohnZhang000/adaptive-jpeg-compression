@@ -25,6 +25,7 @@ import general as g
 
 pad_size=40
 input_size=32
+num_steps=2
 def sigmoid(x):
     return 1/(1+np.exp(-x))
 
@@ -146,7 +147,7 @@ def tftensorGD(img,distort_limit = 0.25):
 
 # GD algorithm that runs outside the session (for BPDA)
 def defend_GD(img,distort_limit = 0.25):
-    num_steps = 10
+    num_steps = 2#10
 
     xsteps = [1 + random.uniform(-distort_limit, distort_limit) for i in range(num_steps + 1)]
     ysteps = [1 + random.uniform(-distort_limit, distort_limit) for i in range(num_steps + 1)]
@@ -1589,12 +1590,15 @@ def defend_FD_ago_warp(img,labels=None):
     
     global pad_size
     global input_size
+    global num_steps
     if 32 == img.shape[-2]:
         pad_size=32
         input_size=32
+        num_steps=2
     else:
         pad_size=224
         input_size=224
+        num_steps=10
         
     auged = defend_FD(img)
     auged_list=[]

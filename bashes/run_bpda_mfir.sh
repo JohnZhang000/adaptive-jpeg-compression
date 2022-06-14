@@ -26,16 +26,22 @@ else
 fi
 echo "Host:"$HOSTNAME"  Device:"$devices    |tee $log_name
 
-model_type=(allconv)
+model_type=(vgg16_imagenet)
+# model_type=(allconv)
 attackers=(bpda)
-defenders=(GauA BDR RDG WEBPF_20 WEBPF_50 WEBPF_80 JPEG_20 JPEG_50 JPEG_80 SHIELD FD GD Ours Ours_WEBP)
-# defenders=(WEBPF_80 GD Ours)
+defenders=(MFIR)
 epsilons=(0.05)
 epochs=(50)
-lr=0.01
+# lr=1
+lr=100
 
-echo  'SUMMARY:bpda'                      |tee -a $log_name
+echo  'SUMMARY:bpda'                       |tee -a $log_name
 echo  'model_type:       '${model_type[*]} |tee -a $log_name
+echo  'attackers:        '${attackers[*]}  |tee -a $log_name
+echo  'defenders:        '${defenders[*]}  |tee -a $log_name
+echo  'epsilons:         '${epsilons[*]}   |tee -a $log_name
+echo  'epochs:           '${epochs[*]}     |tee -a $log_name
+echo  'lr:               '${lr}            |tee -a $log_name
 echo  'log_name:         '${log_name}      |tee -a $log_name
 
 ####################################################################################
@@ -60,7 +66,7 @@ do
                     defender=${defenders[d]}
                     echo  ''                                     |tee -a $log_name
                     echo  'attacker: '${attacker} 'model:'${model} 'epsilon: '${epsilon} 'epoch: '${epoch} 'defender: '${defender} |tee -a $log_name
-                    python ../remove_code/BPDA_pytorch.py --model_data $model --attacker $attacker --defender $defender --epsilon $epsilon --epoch $epoch --lr $lr |tee -a $log_name
+                    python ../remove_code/BPDA_pytorch_MFIR.py --model_data $model --attacker $attacker --defender $defender --epsilon $epsilon --epoch $epoch --lr $lr |tee -a $log_name
                 done
             done
         done

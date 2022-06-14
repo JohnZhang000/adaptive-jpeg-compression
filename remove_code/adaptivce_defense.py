@@ -16,6 +16,7 @@ import sys
 sys.path.append('../common_code')
 import general as g
 import multiprocessing
+import albumentations
 from models.convnext_reg import convnext_xlarge_reg
 # This file contains the defense methods compared in the paper.
 # The FD algorithm's source code is from:
@@ -34,6 +35,12 @@ class adaptive_defender:
         self.input_size=input_size
         self.pad_size=self.input_size
         self.pred_batch_size=pred_batch_size
+        self.random_scale=1.0
+        if 32 == self.input_size:
+            self.num_steps=2
+            self.random_scale=1.5
+        else:
+            self.num_steps=10
         
         
         self.tabel_dict=pickle.load(open(table_pkl,'rb'))
@@ -250,6 +257,61 @@ class adaptive_defender:
         if flag_flip:
             augeds = np.flip(augeds,2).copy()
         return augeds,labels 
+
+    def defend_webp(self, imgs, labels=None, eps_in=None, flag_flip=1):
+        if isinstance(imgs,torch.Tensor): imgs=imgs.numpy()
+        if imgs.ndim==3 and imgs.shape[-1]==imgs.shape[-2]: imgs=np.expand_dims(imgs.transpose(1,2,0),axis=0)
+        elif imgs.ndim==4 and imgs.shape[-1]==imgs.shape[-2]: imgs=imgs.transpose(0,2,3,1)
+        assert(imgs.shape[-3]==imgs.shape[-2])
+        imgs=self.padresult(imgs)
+        augeds=imgs
+
+        # aug = albumentations.Compose([
+        # albumentations.ImageCompression(quality_lower=80,quality_upper=80,compression_type=0,p=1),])
+        # # albumentations.HorizontalFlip(p=1.0)])
+
+        # auged_list=[]
+        # for i in range(augeds.shape[0]):
+        #     img_tmp=augeds[i,...]*255
+        #     auged_tmp = aug(image=img_tmp.astype(np.uint8))
+        #     auged_list.append(np.expand_dims(auged_tmp['image']/255,axis=0))
+        # augeds=np.vstack(auged_list)
+        # augeds=augeds.astype(np.float32)
+        
+        # get eps and tables
+        augeds=g.rgb_to_ycbcr(augeds)  
+        if eps_in is None:
+            eps=self.get_adaptive_eps(augeds)
+        else:
+            eps=eps_in
+        # print(eps)
+        tables=self.bilnear_table(eps*np.random.random()*self.random_scale)
+
+
+        # adaptive defense
+        augeds=self.compress_with_table(augeds,tables)
+        augeds=g.ycbcr_to_rgb(augeds)
+        augeds = self.cropresult(augeds)
+
+        # hor flip
+        if flag_flip:
+            augeds = np.flip(augeds,2).copy()
+
+        # aug = albumentations.Compose([
+        # albumentations.ImageCompression(quality_lower=80,quality_upper=80,compression_type=0,p=1),])
+        # # albumentations.HorizontalFlip(p=1.0)])
+
+        # auged_list=[]
+        # for i in range(augeds.shape[0]):
+        #     img_tmp=augeds[i,...]*255
+        #     auged_tmp = aug(image=img_tmp.astype(np.uint8))
+        #     auged_list.append(np.expand_dims(auged_tmp['image']/255,axis=0))
+        # augeds=np.vstack(auged_list)
+        # augeds=augeds.astype(np.float32)
+
+        # augeds=self.defend_GD(augeds)
+
+        return augeds,labels 
     
     def defend_GD(self,img,distort_limit = 0.25):
         auged_list=[]
@@ -261,7 +323,7 @@ class adaptive_defender:
 
 
     def defend_GD_sig(self,img,distort_limit = 0.25):
-        num_steps = 10
+        num_steps = self.num_steps
 
         xsteps = [1 + random.uniform(-distort_limit, distort_limit) for i in range(num_steps + 1)]
         ysteps = [1 + random.uniform(-distort_limit, distort_limit) for i in range(num_steps + 1)]

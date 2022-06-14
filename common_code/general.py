@@ -105,7 +105,7 @@ class dataset_setting():
             
         elif 'imagenet'==dataset_name:
             if 'estar-403'==self.device:
-                self.dataset_dir='/home/estar/Datasets/ILSVRC2012-5'           # modify
+                self.dataset_dir='/home/estar/Datasets/ILSVRC2012-100'           # modify
                 self.workers=20
                 self.device_num=2
                 self.pred_batch_size=8
@@ -253,7 +253,8 @@ def load_dataset(dataset,dataset_dir,dataset_type='train',under_sample=None):
         raise Exception('Wrong dataset')
     
     if under_sample:
-        select_num=int(under_sample*len(ret_datasets))
+        if under_sample<=1:select_num=int(under_sample*len(ret_datasets))
+        else: select_num=under_sample
         left_num=len(ret_datasets)-select_num
         select_datasets,_=torch.utils.data.random_split(ret_datasets, [select_num,left_num])
         ret_datasets=select_datasets
@@ -506,6 +507,7 @@ def save_images_channel(saved_dir,images,pre_att=None):
         np.savetxt(saved_name+'.txt',images[choosed_idx,...])
 
         img_vanilla_tc  = images[choosed_idx,...]
-        img_vanilla_np  = np.uint8(np.clip(np.round(img_vanilla_tc/img_vanilla_tc.max()*255),0,255))
+        # img_vanilla_np  = np.uint8(np.clip(np.round(img_vanilla_tc/img_vanilla_tc.max()*255),0,255))
+        img_vanilla_np  = np.uint8(np.clip(np.round(img_vanilla_tc/0.05*255),0,255))
         img_vanilla_np_res=cv2.resize(img_vanilla_np, (224,224))
         cv2.imwrite(saved_name+'.png', img_vanilla_np_res)

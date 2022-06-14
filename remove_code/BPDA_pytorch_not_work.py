@@ -177,7 +177,12 @@ def BPDA(model,x_orig,y_orig,mean,std,classes=10,epoch=3,defend=None,saved_dir=N
     y_adv.remove(y_orig.cpu())
     y_adv = np.random.choice(y_adv)
     if saved_dir: save_img(x_orig,saved_dir+'/orig.png')
+    acc=0
+    att=0
+    L2s=0
     for i in range(epoch):
+        if att==1 or L2s>=EPSILON:
+            break
         if saved_dir: save_img(x_adv_bpda,saved_dir+'/bpda_'+str(i)+'.png')
         if defend:  
             x_adv_def,_=defend(x_adv_bpda)
@@ -195,14 +200,15 @@ def BPDA(model,x_orig,y_orig,mean,std,classes=10,epoch=3,defend=None,saved_dir=N
         x_adv_bpda = torch.clip(x_adv_bpda, 0, 1)
         logger.info('step %d, gt=%d, pred=%d, L2:%.3f' % (i, y_orig, p, L2))
         if p!=y_orig:# and L2<EPSILON:
-            acc.append(0)
+            acc=0# acc.append(0)
         else:
-            acc.append(1)
+            acc=1# acc.append(1)
         if p==y_adv:
-            att.append(1)
+            att=1# att.append(1)
         else:
-            att.append(0)
-        L2s.append(L2)
+            att=0# att.append(0)
+        # L2s.append(L2)
+        L2s=L2
     return np.array(acc).reshape(1,-1),np.array(att).reshape(1,-1),np.array(L2s).reshape(1,-1)
 
 def BPDA_EOT(model,x_orig,y_orig,mean,std,classes=10,epoch=3,defend=None,saved_dir=None):
@@ -275,15 +281,15 @@ def BPDA_EOT(model,x_orig,y_orig,mean,std,classes=10,epoch=3,defend=None,saved_d
 if __name__=='__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--model_data', type=str, default='resnet50_imagenet', help='image name')
-    parser.add_argument('--device', type=str, default='1', help='image name')
-    parser.add_argument('--data_num', type=float, default=0.002, help='image name')
+    parser.add_argument('--device', type=str, default='0', help='image name')
+    parser.add_argument('--data_num', type=float, default=0.01, help='image name')
     parser.add_argument('--attacker', default='bpda', choices=['bpda', 'bpda_eot','none'])
-    parser.add_argument('--defender', default='Ours_WEBP', choices=['GauA','BDR','RDG','WEBPF_20','WEBPF_50','WEBPF_80','JPEG_20','JPEG_50','JPEG_80','SHIELD','FD','GD','Ours','Ours_WEBP'])
-    parser.add_argument('--lr', type=float, default=1)
+    parser.add_argument('--defender', default='Ours', choices=['GauA','BDR','RDG','WEBPF_20','WEBPF_50','WEBPF_80','JPEG_20','JPEG_50','JPEG_80','SHIELD','FD','GD','Ours','Ours_WEBP'])
+    parser.add_argument('--lr', type=float, default=0.5)
     parser.add_argument('--lam', type=float, default=1)
     parser.add_argument('--epsilon', type=float, default=0.05)
     parser.add_argument('--ensemble_size', type=int, default=30)
-    parser.add_argument('--epoch', type=int, default=50)
+    parser.add_argument('--epoch', type=int, default=200)
     parser.add_argument('--saved_img_num', type=int, default=10)
     args = parser.parse_args()
 
@@ -327,7 +333,7 @@ if __name__=='__main__':
     else:
         dataset_name='cifar-10'
     data_setting=g.dataset_setting(dataset_name)
-    dataset=g.load_dataset(dataset_name,data_setting.dataset_dir,'val',data_setting.hyperopt_img_val_num)
+    dataset=g.load_dataset(dataset_name,data_setting.dataset_dir,'val',0.01)#data_setting.hyperopt_img_val_num)
     dataloader = DataLoader(dataset, batch_size=1, drop_last=False, num_workers=data_setting.workers, pin_memory=True)    
 
     '''

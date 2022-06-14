@@ -275,7 +275,7 @@ def BPDA_EOT(model,x_orig,y_orig,mean,std,classes=10,epoch=3,defend=None,saved_d
 if __name__=='__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--model_data', type=str, default='resnet50_imagenet', help='image name')
-    parser.add_argument('--device', type=str, default='1', help='image name')
+    parser.add_argument('--device', type=str, default='0', help='image name')
     parser.add_argument('--data_num', type=float, default=0.002, help='image name')
     parser.add_argument('--attacker', default='bpda', choices=['bpda', 'bpda_eot','none'])
     parser.add_argument('--defender', default='Ours_WEBP', choices=['GauA','BDR','RDG','WEBPF_20','WEBPF_50','WEBPF_80','JPEG_20','JPEG_50','JPEG_80','SHIELD','FD','GD','Ours','Ours_WEBP'])
@@ -327,7 +327,7 @@ if __name__=='__main__':
     else:
         dataset_name='cifar-10'
     data_setting=g.dataset_setting(dataset_name)
-    dataset=g.load_dataset(dataset_name,data_setting.dataset_dir,'val',data_setting.hyperopt_img_val_num)
+    dataset=g.load_dataset(dataset_name,data_setting.dataset_dir,'val',0.01)#data_setting.hyperopt_img_val_num)
     dataloader = DataLoader(dataset, batch_size=1, drop_last=False, num_workers=data_setting.workers, pin_memory=True)    
 
     '''

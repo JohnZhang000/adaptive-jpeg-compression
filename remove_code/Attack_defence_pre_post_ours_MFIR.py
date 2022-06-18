@@ -5,7 +5,10 @@ Created on Wed Jun 23 19:47:03 2021
 @author: DELL
 """
 
+from PIL import Image
+import cv2
 import gc
+from cv2 import transform
 import numpy as np
 import torch
 import os 
@@ -22,8 +25,8 @@ from art.attacks.evasion import ProjectedGradientDescent
 # from art.attacks.evasion import UniversalPerturbation
 from art.estimators.classification import PyTorchClassifier
 from art.defences.preprocessor import GaussianAugmentation, JpegCompression,FeatureSqueezing,LabelSmoothing,Resample,SpatialSmoothing,ThermometerEncoding,TotalVarMin
-from art.defences.postprocessor import ClassLabels,GaussianNoise,HighConfidence,ReverseSigmoid,Rounded
-from scipy.special import softmax
+# from art.defences.postprocessor import ClassLabels,GaussianNoise,HighConfidence,ReverseSigmoid,Rounded
+# from scipy.special import softmax
 
 from defense import defend_webpf_wrap,defend_webpf_my_wrap,defend_rdg_wrap,defend_fd_wrap,defend_bdr_wrap,defend_shield_wrap
 from defense import defend_my_webpf
@@ -37,6 +40,9 @@ from third_party.ResNeXt_DenseNet.models.resnext import resnext29
 from third_party.WideResNet_pytorch.wideresnet import WideResNet
 from torch.utils.data import DataLoader
 from models.convnext_reg import convnext_xlarge_reg
+import torchvision.transforms as transforms
+from torch.nn.functional import softmax
+
 
 import json
 
@@ -47,6 +53,61 @@ import pickle
 from tqdm import tqdm
 import logging
 torch.multiprocessing.set_sharing_strategy('file_system')
+
+class MFIR_defender:
+
+    # 解释器初始化
+    def __init__(self,model,mean,std,input_size):
+        c,h,w=input_size
+        self.model=model
+        self.mean=mean
+        self.std=std
+        if 32==h:
+            self.base=2
+            self.std1=2
+            self.std2=2
+        else:
+            self.base=20
+            self.std1=20
+            self.std2=20
+        self.transform=transforms.Compose([transforms.RandomResizedCrop((h,w)),
+                                            transforms.ToTensor(),
+                                            transforms.Normalize(self.mean,self.std),])
+    
+    def pred(self,img):
+        img=self.transform(img)
+        logits=self.model(img.unsqueeze(0).cuda())
+        logits=softmax(logits.detach().cpu(),dim=1)
+        return logits.numpy()
+
+
+    def defend_single(self,img):
+        img=np.uint8(img*255)
+        img=cv2.cvtColor(img,cv2.COLOR_BGR2RGB)
+        img=cv2.bilateralFilter(img,3,self.std1,self.std2)
+        img=cv2.bilateralFilter(img,5,self.std1,self.std2)
+        logits=[]
+        for i in range(10):
+            rb=np.random.random()*self.base-self.base/2
+            rc=np.random.random()*20-10
+            img_tmp=cv2.bilateralFilter(img,self.base-1,1,self.base*i+rb)
+            img_tmp=Image.fromarray(cv2.cvtColor(img_tmp,cv2.COLOR_BGR2RGB))
+            img_tmp=img_tmp.rotate(rc,expand=1.1)
+            logit=self.pred(img_tmp)
+            logits.append(logit)
+        logits=np.vstack(logits)
+        pred=np.argmax(logits.mean(axis=0))
+        return pred
+
+    def defend_batch(self,imgs,labels):
+        correct=0
+        img_num=imgs.shape[0]
+        for i in range(img_num):
+            pred=self.defend_single(imgs[i])
+            if pred==labels[i]: correct+=1
+        return correct
+
+
 
 def append_attack(attacks,attack,model,epss):
     for i in range(len(epss)):
@@ -70,59 +131,59 @@ def get_defended_acc(fmodel,dataloader,defenders):
             cors[idx_def] += np.sum(predictions==labels)
     return cors
 
-def get_defended_attacked_acc_per_batch(fmodel,attackers,defenders,defender_names,images,labels):
-    cors=np.zeros((len(attackers)+1,len(defenders)+1))
-    for j in range(len(attackers)+1):
-            images_cp=images.copy()
-            labels_cp=labels.copy()
-            images_att=images.copy()
-            eps=0
-            if j>0:
-                try:
-                    eps=attackers[j-1].eps
-                except:
-                    eps=0
-                images_att  = attackers[j-1].generate(x=images_cp)
-            for k in range(len(defenders)+1):
-                    images_def = images_att.copy()
-                    images_att_trs = images_att.transpose(0,2,3,1).copy()
-                    if k>0:
-                        if 'ADAD-flip'==defender_names[k-1]:
-                            images_def,_ = defenders[k-1](images_att_trs,labels_cp,None,0)
-                        elif 'ADAD+eps-flip'==defender_names[k-1]:
-                            images_def,_ = defenders[k-1](images_att_trs,labels_cp,eps*np.ones(images_att.shape[0]),0)
-                        else:
-                            images_def,_ = defenders[k-1](images_att_trs,labels_cp)
-                        images_def=images_def.transpose(0,3,1,2)
-                    images_def_cp = images_def.copy()
-                    cors[j,k] += get_acc(fmodel,images_def_cp,labels)
-                    del images_def,images_def_cp,images_att_trs
-                    gc.collect()
-            del images_cp,images_att,labels_cp
-            gc.collect()
-    return np.expand_dims(cors,axis=0)
+# def get_defended_attacked_acc_per_batch(fmodel,attackers,defenders,defender_names,images,labels):
+#     cors=np.zeros((len(attackers)+1,len(defenders)+1))
+#     for j in range(len(attackers)+1):
+#             images_cp=images.copy()
+#             labels_cp=labels.copy()
+#             images_att=images.copy()
+#             eps=0
+#             if j>0:
+#                 try:
+#                     eps=attackers[j-1].eps
+#                 except:
+#                     eps=0
+#                 images_att  = attackers[j-1].generate(x=images_cp)
+#             for k in range(len(defenders)+1):
+#                     images_def = images_att.copy()
+#                     images_att_trs = images_att.transpose(0,2,3,1).copy()
+#                     if k>0:
+#                         if 'ADAD-flip'==defender_names[k-1]:
+#                             images_def,_ = defenders[k-1](images_att_trs,labels_cp,None,0)
+#                         elif 'ADAD+eps-flip'==defender_names[k-1]:
+#                             images_def,_ = defenders[k-1](images_att_trs,labels_cp,eps*np.ones(images_att.shape[0]),0)
+#                         else:
+#                             images_def,_ = defenders[k-1](images_att_trs,labels_cp)
+#                         images_def=images_def.transpose(0,3,1,2)
+#                     images_def_cp = images_def.copy()
+#                     cors[j,k] += get_acc(fmodel,images_def_cp,labels)
+#                     del images_def,images_def_cp,images_att_trs
+#                     gc.collect()
+#             del images_cp,images_att,labels_cp
+#             gc.collect()
+#     return np.expand_dims(cors,axis=0)
 
-def get_defended_attacked_acc_mp(fmodel,dataloader,attackers,defenders,defender_names):
-    pool_list=[]
-    images_list=[]
-    labels_list=[]
-    for i, (images, labels) in enumerate(tqdm(dataloader)): 
-        res=pool.apply_async(get_defended_attacked_acc_per_batch,
-                            args=(fmodel,attackers,defenders,defender_names,images.numpy(),labels.numpy()))
-        pool_list.append(res)
-    pool.close()
-    pool.join()
+# def get_defended_attacked_acc_mp(fmodel,dataloader,attackers,defenders,defender_names):
+#     pool_list=[]
+#     images_list=[]
+#     labels_list=[]
+#     for i, (images, labels) in enumerate(tqdm(dataloader)): 
+#         res=pool.apply_async(get_defended_attacked_acc_per_batch,
+#                             args=(fmodel,attackers,defenders,defender_names,images.numpy(),labels.numpy()))
+#         pool_list.append(res)
+#     pool.close()
+#     pool.join()
 
-    corss=[]
-    for i in pool_list:
-            cors = i.get()
-            corss.append(cors)
-    cors_np=np.vstack(corss).sum(axis=0)
-    cors=cors_np/len(dataloader.dataset)
-    return cors
+#     corss=[]
+#     for i in pool_list:
+#             cors = i.get()
+#             corss.append(cors)
+#     cors_np=np.vstack(corss).sum(axis=0)
+#     cors=cors_np/len(dataloader.dataset)
+#     return cors
 
-def get_defended_attacked_acc(fmodel,dataloader,attackers,defenders,defender_names):
-    cors=np.zeros((len(attackers)+1,len(defenders)+1))
+def get_defended_attacked_acc(dataloader,attackers,defender):
+    cors=np.zeros(len(attackers)+1)
     for i, (images, labels) in enumerate(tqdm(dataloader)):
         images=images.numpy()
         labels=labels.numpy()
@@ -137,26 +198,24 @@ def get_defended_attacked_acc(fmodel,dataloader,attackers,defenders,defender_nam
                 except:
                     eps=0
                 images_att  = attackers[j-1].generate(x=images_cp)
-            for k in range(len(defenders)+1):
-                    images_def = images_att.copy()
-                    images_att_trs = images_att.transpose(0,2,3,1).copy()
-                    if k>0:
-                        if 'ADAD-flip'==defender_names[k-1]:
-                            images_def,_ = defenders[k-1](images_att_trs,labels_cp,None,0)
-                        elif 'ADAD+eps-flip'==defender_names[k-1]:
-                            images_def,_ = defenders[k-1](images_att_trs,labels_cp,eps*np.ones(images_att.shape[0]),0)
-                        elif 'ADAD+eps+flip'==defender_names[k-1]:
-                            images_def,_ = defenders[k-1](images_att_trs,labels_cp,eps*np.ones(images_att.shape[0]),1)
-                        else:
-                            images_def,_ = defenders[k-1](images_att_trs,labels_cp)
-                        images_def=images_def.transpose(0,3,1,2)
-                    images_def_cp = images_def.copy()
-                    cors[j,k] += get_acc(fmodel,images_def_cp,labels)
-                    del images_def,images_def_cp,images_att_trs
-                    # cors[j,k] += get_acc(fmodel,images_def,labels)
-                    # del images_def,images_att_trs
-                    gc.collect()
-            del images_cp,images_att,labels_cp
+            images_def = images_att.copy()
+            images_att_trs = images_att.transpose(0,2,3,1).copy()
+            # images_def_cp = images_def.copy()
+            cors[j] += defender(images_att_trs,labels_cp)
+
+            # for k in range(len(defenders)+1):
+            #         images_def = images_att.copy()
+            #         images_att_trs = images_att.transpose(0,2,3,1).copy()
+            #         if k>0:
+            #             images_def,_ = defenders[k-1](images_att_trs,labels_cp)
+            #             images_def=images_def.transpose(0,3,1,2)
+            #         images_def_cp = images_def.copy()
+            #         cors[j,k] += get_acc(fmodel,images_def_cp,labels)
+            #         del images_def,images_def_cp,images_att_trs
+            #         # cors[j,k] += get_acc(fmodel,images_def,labels)
+            #         # del images_def,images_att_trs
+            #         gc.collect()
+            # del images_cp,images_att,labels_cp
             gc.collect()
     cors=cors/len(dataloader.dataset)
     return cors
@@ -184,7 +243,7 @@ if __name__=='__main__':
         '%(asctime)s - %(name)s - %(levelname)s -%(message)s',
         datefmt='%Y-%m-%d %H:%M:%S')
     
-    fh=logging.FileHandler(os.path.join(saved_dir,'log_acc.txt'))
+    fh=logging.FileHandler(os.path.join(saved_dir,'log_acc_mfir.txt'))
     fh.setLevel(logging.FATAL)
     fh.setFormatter(formatter)
     
@@ -206,7 +265,7 @@ if __name__=='__main__':
     else:
         dataset_name='cifar-10'
     data_setting=g.dataset_setting(dataset_name)
-    dataset=g.load_dataset(dataset_name,data_setting.dataset_dir,'val',data_setting.hyperopt_img_val_num)
+    dataset=g.load_dataset(dataset_name,data_setting.dataset_dir,'val',100)#data_setting.hyperopt_img_val_num)
     dataloader = DataLoader(dataset, batch_size=data_setting.pred_batch_size, drop_last=False, num_workers=data_setting.workers, pin_memory=True)    
 
     '''
@@ -224,62 +283,15 @@ if __name__=='__main__':
     防御初始化
     '''
 
-    defences_pre=[]
-    defences_names_pre=[]
-    # defences_pre.append(GaussianAugmentation(sigma=0.01,augmentation=False))
-    # defences_names_pre.append('GauA')
-    # defences_pre.append(defend_bdr_wrap)
-    # defences_names_pre.append('BDR')
-    # defences_pre.append(defend_rdg_wrap)
-    # defences_names_pre.append('RDG')
-    # # defences_pre.append(defend_webpf_wrap(20,20).defend)
-    # # defences_names_pre.append('WEBPF_20')
-    # # defences_pre.append(defend_webpf_wrap(50,50).defend)
-    # # defences_names_pre.append('WEBPF_50')
-    # # defences_pre.append(defend_webpf_wrap(80,80).defend)
-    # # defences_names_pre.append('WEBPF_80')
-    # # defences_pre.append(JpegCompression(clip_values=(0,1),quality=20,channels_first=False))
-    # # defences_names_pre.append('JPEG_20')
-    # # defences_pre.append(JpegCompression(clip_values=(0,1),quality=50,channels_first=False))
-    # # defences_names_pre.append('JPEG_50')
-    # defences_pre.append(JpegCompression(clip_values=(0,1),quality=80,channels_first=False))
-    # defences_names_pre.append('JPEG_80')
-    # defences_pre.append(defend_shield_wrap)
-    # defences_names_pre.append('SHIELD')
-    # defences_pre.append(fddnn_defend)
-    # defences_names_pre.append('FD')
-    # defences_pre.append(defend_FD_ago_warp)
-    # defences_names_pre.append('GD')
-    
+    defender=MFIR_defender(model,data_setting.mean, data_setting.std,data_setting.input_shape)
+
     table_pkl=os.path.join(saved_dir,'table_dict.pkl')
     gc_model_dir=os.path.join(saved_dir,'model_best.pth.tar')
     model_mean_std=os.path.join(saved_dir,'mean_std_train.npy')
-    # threshs=[0.001,0.001,0.001]
-    # fd_ago_new=defend_my_fd_ago(table_pkl,gc_model_dir,[0.3,0.8,0.8],[0.0001,0.0001,0.0001],model_mean_std)
-    # fd_ago_new.get_cln_dct(images.transpose(0,2,3,1).copy())
-    # print(fd_ago_new.abs_threshs)
-    # defences_pre.append(fd_ago_new.defend)
-    # defences_names_pre.append('fd_ago_my')
-    # defences_pre.append(fd_ago_new.defend_channel_wise_with_eps)
-    # defences_names_pre.append('fd_ago_my')
-    # defences_pre.append(fd_ago_new.defend_channel_wise)
-    # defences_names_pre.append('fd_ago_my_no_eps')
-    # defences_pre.append(fd_ago_new.defend_channel_wise_adaptive_table)
-    # defences_names_pre.append('fd_ago_my_ada')
     adaptive_defender=adaptive_defender(table_pkl,gc_model_dir,data_setting.nb_classes,data_setting.input_shape[-1],data_setting.pred_batch_size,model_mean_std)
-    
-    defences_pre.append(adaptive_defender.defend)
-    defences_names_pre.append('ADAD')
-    # defences_pre.append(adaptive_defender.defend)
-    # defences_names_pre.append('ADAD-flip')
-    # defences_pre.append(adaptive_defender.defend)
-    # defences_names_pre.append('ADAD+eps-flip')
-    # defences_pre.append(adaptive_defender.defend)
-    # defences_names_pre.append('ADAD+eps+flip')
-    # defences_pre.append(adaptive_defender.defend_webp)
-    # defences_names_pre.append('ADAD_RND')
 
-    
+    def defend_plus(f1,f2):
+        return lambda x1,x2: f2(f1(x1,x2)[0],x2)
     
     '''
     攻击初始化
@@ -313,11 +325,14 @@ if __name__=='__main__':
     计算防御效果
     '''            
     # 标为原始样本
+    # defend_used=defend_plus(adaptive_defender.defend,defender.defend_batch)
+    # defend_used=defender.defend_batch
+    defend_used=adaptive_defender.defend
  
-    accs=get_defended_attacked_acc(fmodel,dataloader,attacks,defences_pre,defences_names_pre)
+    accs=get_defended_attacked_acc(dataloader,attacks,defend_used)
     np.save(os.path.join(saved_dir,'acc.npy'),accs)
     logger.fatal(attack_names)
-    logger.fatal(defences_names_pre)
+    # logger.fatal(defences_names_pre)
     logger.fatal(accs)
     logger.fatal(accs.mean(axis=0))
    

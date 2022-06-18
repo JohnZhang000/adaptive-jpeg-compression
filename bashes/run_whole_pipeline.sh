@@ -27,7 +27,7 @@ fi
 echo "Host:"$HOSTNAME"  Device:"$devices    |tee $log_name
 
 # model_type=(allconv vgg16 resnet50 vgg16_imagenet resnet50_imagenet)
-model_type=(allconv vgg16_imagenet)
+model_type=(resnet50_imagenet vgg16_imagenet)
 
 
 echo  'SUMMARY:whole'                      |tee -a $log_name
